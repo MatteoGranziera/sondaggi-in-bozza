@@ -21,13 +21,15 @@ const helpers = `
     set: (el, v) => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); },
     enter: (el) => el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })),
     item: (name) => [...document.querySelectorAll('#pickList label')].find((l) => l.querySelector('.iname span').textContent === name),
+    pickItem: (name) => T.item(name).querySelector('input').click(),
     names: () => [...document.querySelectorAll('#pickList .iname > span')].map((s) => s.textContent).join('|'),
     chips: () => [...document.querySelectorAll('#chips .chip > span')].map((s) => s.textContent).join('|'),
     pick: () => document.querySelector('emoji-picker').shadowRoot,
     sendText: () => document.querySelector('#sendBox').innerText,
+    sendButton: () => document.querySelector('#sendBox > button'),
   }; true`;
 
-async function waitFor(c, expr, ms = 20000) {
+async function waitFor(c, expr, ms = 10000) {
   for (let t = 0; t < ms; t += 200) {
     if (await c.ev(expr).catch(() => false)) return true;
     await sleep(200);
@@ -36,6 +38,13 @@ async function waitFor(c, expr, ms = 20000) {
 }
 
 const shot = async (c, name) => { if (SHOTS) await c.shot(join(SHOTS, name)); };
+
+async function sendNow(c) {
+  await c.ev(`T.sendButton().click(); true`);
+  await c.ev(`T.byText('button', 'Sì, invia').click(); true`);
+  await waitFor(c, `!T.sendText().includes('Invio in corso')`, 5000);
+  await sleep(200);
+}
 
 try {
   const tab = await newTab(port);
@@ -47,14 +56,16 @@ try {
   await c.ev(helpers);
 
   // First run: the notice comes before anything else.
-  check('notice shown on first run', (await c.ev(`T.q('.notice')?.innerText || ''`)).includes('non è di WhatsApp né di Meta'));
+  const notice = await c.ev(`T.q('.notice')?.innerText || ''`);
+  check('notice shown on first run', notice.includes('non è di WhatsApp né di Meta') && notice.includes('una persona o un gruppo alla volta'), notice);
   await shot(c, 'notice.png');
   await c.ev(`T.byText('button', 'Ho capito').click(); true`);
-  check('notice remembered', (await c.ev(`__mock.store().noticeAck`)) === 1);
+  check('notice remembered', (await c.ev(`__mock.store().noticeAck`)) === 2);
   check('list after notice', (await c.ev(`T.q('#view').innerText`)).includes('Ancora nessun sondaggio'));
   check('footer links privacy and source', await c.ev(`T.qa('.foot a').map((a) => a.href).join(' ').includes('/blob/main/PRIVACY.md')`));
   check('status online', (await c.ev(`T.q('#pill').textContent`)).startsWith('Collegato come +393330000000'));
 
+  // Editing.
   await c.ev(`T.byText('button', 'Nuovo').click(); true`);
   await sleep(200);
   check('new draft focuses the question', await c.ev(`document.activeElement === T.q('#q')`));
@@ -89,83 +100,102 @@ try {
   await c.ev(`T.q('#view h2').click(); true`);
   check('outside click closes the picker', await c.ev(`!T.q('.emoji-pop')`));
 
-  // Recipients: groups, contacts, and a number typed into the contact search.
+  // One recipient: picking another replaces it, across groups, contacts and typed numbers.
   check('groups listed', await waitFor(c, `T.names() === 'Calcetto del giovedì|Capodanno 2027|Famiglia'`));
-  await c.ev(`T.item('Famiglia').querySelector('input').click(); T.item('Calcetto del giovedì').querySelector('input').click(); true`);
+  check('nothing to send without a recipient', await c.ev(`T.sendButton().disabled && T.sendText().includes('Nessun destinatario scelto')`));
+  await c.ev(`T.pickItem('Famiglia'); true`);
+  check('a group becomes the recipient', (await c.ev(`T.chips()`)) === 'Famiglia');
+  await c.ev(`T.pickItem('Calcetto del giovedì'); true`);
+  check('picking another replaces it', (await c.ev(`T.chips()`)) === 'Calcetto del giovedì' && (await c.ev(`T.qa('#pickList input:checked').length`)) === 1);
   await c.ev(`T.byText('.tab', 'Contatti').click(); true`);
   check('contacts listed', await waitFor(c, `T.names() === 'Giulia Bianchi|Mario Rossi|Zoë'`));
   await c.ev(`T.set(T.q('#picker input[type=search]'), 'zoe'); true`);
   check('search ignores accents', (await c.ev(`T.names()`)) === 'Zoë');
   await c.ev(`T.set(T.q('#picker input[type=search]'), '765'); true`);
   check('search by number', (await c.ev(`T.names()`)) === 'Giulia Bianchi');
-  await c.ev(`T.set(T.q('#picker input[type=search]'), ''); T.item('Mario Rossi').querySelector('input').click(); true`);
   await c.ev(`T.set(T.q('#picker input[type=search]'), '393331112222'); true`);
   check('a known number shows the contact only', (await c.ev(`T.names()`)) === 'Mario Rossi' && (await c.ev(`!T.q('.addnum')`)));
+  await c.ev(`T.pickItem('Mario Rossi'); true`);
+  check('a contact replaces the group', (await c.ev(`T.chips()`)) === 'Mario Rossi');
   await c.ev(`T.set(T.q('#picker input[type=search]'), '+39 345 000 1111'); true`);
-  check('a new number can be added', (await c.ev(`T.q('.addnum')?.textContent`)) === '+ Aggiungi il numero +393450001111');
+  check('a new number is offered', (await c.ev(`T.q('.addnum')?.textContent`)) === '+ Usa il numero +393450001111');
   await c.ev(`T.enter(T.q('#picker input[type=search]')); true`);
-  check('four recipients across tabs', (await c.ev(`T.chips()`)) === 'Famiglia|Calcetto del giovedì|Mario Rossi|+393450001111', await c.ev(`T.chips()`));
-  await c.ev(`T.byText('.tab', 'Gruppi').click(); true`);
+  check('a typed number replaces the contact', (await c.ev(`T.chips()`)) === '+393450001111' && (await c.ev(`T.q('#picker input[type=search]').value`)) === '');
   await shot(c, 'editor.png');
 
-  // Confirmation names the content and every recipient.
-  await c.ev(`T.byText('#sendBox button', 'Invia a 4 destinatari').click(); true`);
+  // Confirmation names the content and the recipient; a typed number is called out.
+  await c.ev(`T.sendButton().click(); true`);
   const confirmText = await c.ev(`T.sendText()`);
-  check('confirm shows the question', confirmText.includes('«Cena🍕🍕 venerdì?» (3 opzioni, una risposta)'), confirmText);
-  check('confirm lists every recipient', (await c.ev(`T.qa('.confirm-list li span').map((s) => s.textContent).join('|')`)) === 'Famiglia|Calcetto del giovedì|Mario Rossi|+393450001111');
-  check('confirm marks the typed number', confirmText.includes('numero scritto a mano') && confirmText.includes('anche se non ti conosce'));
+  check('confirm shows question and recipient', confirmText.includes('«Cena🍕🍕 venerdì?» (3 opzioni, una risposta) a +393450001111 (numero scritto a mano).'), confirmText);
+  check('confirm warns about a typed number', confirmText.includes('anche se non ti conosce'));
   await shot(c, 'confirm.png');
   await c.ev(`T.byText('button', 'Sì, invia').click(); true`);
-  await sleep(400);
-  check('progress and stop while sending', /Invio [12] di 4/.test(await c.ev(`T.sendText()`)) && (await c.ev(`!!T.byText('#sendBox button', 'Ferma')`)));
-  check('sending finishes', await waitFor(c, `!T.byText('#sendBox button', 'Ferma')`, 20000));
+  await waitFor(c, `!T.sendText().includes('Invio in corso')`, 5000);
   const sent = JSON.parse(await c.ev(`JSON.stringify(__mock.sent)`));
-  check('four polls sent', sent.length === 4);
-  check('payload', sent[0].name === 'Cena🍕🍕 venerdì?' && sent[0].choices.join() === 'Pizzeria,Sushi,Trattoria' && sent[0].selectableCount === 1, JSON.stringify(sent[0]));
-  check('contacts get the number address', sent[2].chatId === '393331112222@c.us');
-  check('only the failed recipient stays selected', (await c.ev(`T.chips()`)) === 'Calcetto del giovedì');
+  check('one poll sent', sent.length === 1);
+  check('payload', sent[0].chatId === '393450001111@c.us' && sent[0].name === 'Cena🍕🍕 venerdì?' && sent[0].choices.join() === 'Pizzeria,Sushi,Trattoria' && sent[0].selectableCount === 1, JSON.stringify(sent[0]));
+  check('recipient cleared after sending', (await c.ev(`T.chips()`)) === '' && (await c.ev(`T.sendButton().disabled`)));
   check('poll stays editable', await c.ev(`!T.q('#q').disabled`));
   check('notice about editing after sending', (await c.ev(`T.q('.infobar')?.textContent || ''`)).includes('valgono per i prossimi invii'));
-  const logText = await c.ev(`T.q('#logCard').innerText`);
-  check('send log at the bottom', await c.ev(`T.q('#view > div').lastElementChild.id === 'logCard'`) && logText.includes('3 riusciti · 1 non riuscito') && logText.includes('Non puoi scrivere in questo gruppo.'), logText);
-  await shot(c, 'sent.png');
 
-  // Edit and send again: the log keeps the old text, a repeat recipient is called out.
+  // A failed send keeps the recipient, so pressing Invia again retries.
+  await c.ev(`T.byText('.tab', 'Gruppi').click(); true`);
+  await sleep(200);
+  await c.ev(`T.pickItem('Calcetto del giovedì'); true`);
+  await sendNow(c);
+  check('failed recipient stays chosen', (await c.ev(`T.chips()`)) === 'Calcetto del giovedì' && (await c.ev(`T.sendButton().textContent`)) === 'Invia a Calcetto del giovedì');
+  await c.ev(`__mock.failFor.clear(); true`);
+  await sendNow(c);
+  check('retry succeeds and clears', (await c.ev(`__mock.sent.length`)) === 3 && (await c.ev(`T.chips()`)) === '');
+
+  // The log, the previous version, and a repeat recipient.
+  const logText = await c.ev(`T.q('#logCard').innerText`);
+  check('send log at the bottom', await c.ev(`T.q('#view > div').lastElementChild.id === 'logCard'`) && logText.includes('2 riusciti · 1 non riuscito') && logText.includes('Non puoi scrivere in questo gruppo.'), logText);
   await c.ev(`T.set(T.q('#q'), 'Cena sabato?'); true`);
   check('older sends marked as previous version', (await c.ev(`T.q('#logCard').innerText`)).includes('Versione precedente: «Cena🍕🍕 venerdì?»'));
-  await c.ev(`__mock.failFor.clear(); T.item('Famiglia').querySelector('input').click(); true`);
+  await c.ev(`T.pickItem('Calcetto del giovedì'); true`);
   check('chip says already sent', (await c.ev(`T.q('#chips').innerText`)).includes('già inviato'));
-  await c.ev(`T.byText('#sendBox button', 'Invia a 2 destinatari').click(); true`);
-  check('confirm warns about a repeat', (await c.ev(`T.sendText()`)).includes("Uno dei destinatari l'ha già ricevuto"));
+  check('list marks who already has it', (await c.ev(`T.item('Calcetto del giovedì').innerText`)).includes('inviato'));
+  await c.ev(`T.sendButton().click(); true`);
+  check('confirm warns about a repeat', (await c.ev(`T.sendText()`)).includes("L'ha già ricevuto: gli arriverà di nuovo."));
   await c.ev(`T.byText('button', 'Sì, invia').click(); true`);
-  check('resend finishes', await waitFor(c, `__mock.sent.length === 6 && !T.byText('#sendBox button', 'Ferma')`, 15000));
-  check('resend uses the new text', (await c.ev(`__mock.sent[5].name`)) === 'Cena sabato?');
-
-  // Stop halfway: whoever did not get it stays selected.
-  await c.ev(`['Famiglia', 'Calcetto del giovedì', 'Capodanno 2027'].forEach((n) => T.item(n).querySelector('input').click()); true`);
-  await c.ev(`T.byText('#sendBox button', 'Invia a 3 destinatari').click(); T.byText('button', 'Sì, invia').click(); true`);
-  await sleep(600);
-  await c.ev(`T.byText('#sendBox button', 'Ferma').click(); true`);
-  check('stop finishes', await waitFor(c, `!(T.sendText().includes('Mi fermo'))`, 10000));
-  check('stop sends no more', (await c.ev(`__mock.sent.length`)) === 7, String(await c.ev(`__mock.sent.length`)));
-  check('stopped recipients stay selected', (await c.ev(`T.chips()`)) === 'Calcetto del giovedì|Capodanno 2027', await c.ev(`T.chips()`));
-
-  // At most 20 recipients per send.
-  await c.ev(`T.byText('.tab', 'Contatti').click(); true`);
-  await sleep(200);
-  await c.ev(`for (let i = 0; i < 19; i++) { const s = T.q('#picker input[type=search]'); T.set(s, '+39 340 000 ' + String(1000 + i)); T.enter(s); } true`);
-  check('cap at 20 recipients', (await c.ev(`T.qa('#chips .chip').length`)) === 21 && (await c.ev(`T.sendText()`)).includes('Al massimo 20 destinatari per invio') && (await c.ev(`T.q('#sendBox button').disabled`)));
+  await waitFor(c, `!T.sendText().includes('Invio in corso')`, 5000);
+  check('resend uses the new text', (await c.ev(`__mock.sent.length`)) === 4 && (await c.ev(`__mock.sent[3].name`)) === 'Cena sabato?');
+  await shot(c, 'sent.png');
 
   // Contacts failing to load: the error shows, typing a number still works.
-  await c.ev(`__mock.contactsError = 'ContactStore non disponibile'; T.byText('#picker button', 'Aggiorna').click(); true`);
+  await c.ev(`__mock.contactsError = 'ContactStore non disponibile'; T.byText('.tab', 'Contatti').click(); true`);
+  await c.ev(`T.byText('#picker button', 'Aggiorna').click(); true`);
   check('contact error shown with a way out', await waitFor(c, `T.q('#pickList').innerText.includes('ContactStore non disponibile. Puoi comunque scrivere un numero')`, 3000));
   await c.ev(`T.set(T.q('#picker input[type=search]'), '00393401234567'); true`);
   check('number offered despite the error', !!(await c.ev(`T.q('.addnum')`)));
 
   await c.ev(`T.byText('button', '‹ Sondaggi').click(); true`);
   await sleep(200);
-  check('list summary', (await c.ev(`T.q('.draft .dm').textContent`)) === '3 opzioni · inviato a 4 · 21 da inviare', await c.ev(`T.q('.draft .dm').textContent`));
-  await c.ev(`T.q('.draft').click(); true`);
+  check('list summary', (await c.ev(`T.q('.draft .dm').textContent`)) === '3 opzioni · inviato a 2', await c.ev(`T.q('.draft .dm').textContent`));
+
+  // A poll already in the open chat becomes a new draft.
+  await c.ev(`T.byText('button', 'Da una chat').click(); true`);
+  check('chat polls listed', await waitFor(c, `T.qa('.chat-polls li').length === 2`, 3000));
+  const cp = await c.ev(`T.q('#chatPolls').innerText`);
+  check('chat polls show chat, author and type', cp.includes('Chat «Famiglia»') && cp.includes('di Mamma') && cp.includes('più risposte') && cp.includes('tuo'), cp);
+  check('a poll that is not a draft is not marked', !(await c.ev(`T.q('#chatPolls').innerText`)).includes('già fra le bozze'));
+  await shot(c, 'import.png');
+  await c.ev(`T.qa('.chat-polls li')[0].querySelector('button').click(); true`);
+  await sleep(300);
+  check('imported poll opens as a draft', (await c.ev(`T.q('#q').value`)) === 'Pranzo di domenica: chi porta cosa?'
+    && (await c.ev(`T.qa('#opts input').map((i) => i.value).join(',')`)) === 'Dolce,Vino,Pane'
+    && (await c.ev(`T.qa('input[name=multi]')[1].checked`)));
+  check('imported draft says where it came from', (await c.ev(`T.q('#view').innerText`)).includes('Preso dalla chat «Famiglia»'));
+  check('imported draft has no recipient or log', (await c.ev(`T.chips()`)) === '' && (await c.ev(`T.q('#logCard').hidden`)));
+  await c.ev(`T.byText('button', '‹ Sondaggi').click(); T.byText('button', 'Da una chat').click(); true`);
+  check('imported poll now marked as known', await waitFor(c, `(T.qa('.chat-polls li')[0]?.innerText || '').includes('già fra le bozze')`, 3000));
+  await c.ev(`__mock.chatPollsError = 'Apri in WhatsApp Web la chat con il sondaggio, poi premi Aggiorna.'; T.byText('button', 'Aggiorna').click(); true`);
+  check('no open chat explained', await waitFor(c, `T.q('#chatPolls').innerText.includes('Apri in WhatsApp Web la chat con il sondaggio')`, 3000));
+
+  await c.ev(`T.byText('button', '‹ Sondaggi').click(); true`);
+  await sleep(200);
+  await c.ev(`T.qa('.draft').find((b) => b.innerText.includes('Cena sabato?')).click(); true`);
   await sleep(200);
   await c.ev(`T.byText('button', 'Duplica').click(); true`);
   await sleep(200);
@@ -174,14 +204,20 @@ try {
   const errors = c.logs.filter((l) => !l.includes('ETag'));
   check('no page errors', errors.length === 0, errors.join(' ; '));
 
-  // Drafts saved by 0.1 kept a recipient selected after sending: it must not be sent twice.
-  await c.ev(`sessionStorage.setItem('seed', JSON.stringify({ noticeAck: 1, view: 'edit', currentId: 'old1', drafts: [{ id: 'old1', question: 'Vecchio', options: ['A', 'B'], multiple: false,
-    recipients: [{ jid: '120363000001@g.us', label: 'Famiglia' }, { jid: '120363000003@g.us', label: 'Capodanno 2027' }],
-    sends: [{ jid: '120363000001@g.us', label: 'Famiglia', ok: true, info: 'x', at: Date.now() - 86400000 }], createdAt: 1, updatedAt: 2 }] })); true`);
+  // Older drafts: 0.1 kept served recipients in a list, 0.2 kept only pending ones.
+  await c.ev(`sessionStorage.setItem('seed', JSON.stringify({ noticeAck: 1, view: 'list', drafts: [
+    { id: 'v1', question: 'Vecchio', options: ['A', 'B'], multiple: false, createdAt: 1, updatedAt: 3,
+      recipients: [{ jid: '120363000001@g.us', label: 'Famiglia' }, { jid: '120363000003@g.us', label: 'Capodanno 2027' }],
+      sends: [{ jid: '120363000001@g.us', label: 'Famiglia', ok: true, info: 'x', at: Date.now() - 86400000 }] },
+    { v: 2, id: 'v2', question: 'Medio', options: ['A', 'B'], multiple: false, createdAt: 1, updatedAt: 2,
+      recipients: [{ jid: '393331112222@c.us', label: 'Mario Rossi', source: 'contact' }, { jid: '120363000003@g.us', label: 'Capodanno 2027', source: 'group' }], sends: [] },
+  ] })); true`);
   await c.goto(PANEL);
   await c.ev(helpers);
-  check('old draft migrated', (await c.ev(`T.chips()`)) === 'Capodanno 2027');
-  check('migrated draft skips the notice once acknowledged', await c.ev(`!T.q('.notice')`));
+  check('changed notice shown again to earlier users', await c.ev(`!!T.q('.notice')`));
+  await c.ev(`T.byText('button', 'Ho capito').click(); true`);
+  const meta = await c.ev(`T.qa('.draft .dm').map((m) => m.textContent).join(' / ')`);
+  check('old drafts keep their first pending recipient', meta === '2 opzioni · inviato a 1 · pronto per Capodanno 2027 / 2 opzioni · mai inviato · pronto per Mario Rossi', meta);
   c.close();
 } finally {
   proc.kill();

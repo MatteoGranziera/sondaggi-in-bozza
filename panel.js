@@ -2,14 +2,10 @@
 
 const MAX_OPTIONS = 12;
 const WA_URL = 'https://web.whatsapp.com/';
-// One poll every few seconds and a small batch at a time: this is for people who know you,
-// and WhatsApp limits accounts that send unrequested messages in bulk.
-const SEND_GAP_MS = 3000;
-const MAX_PER_SEND = 20;
 const SLOW_LOAD_MS = 60000;
 const LIST_LIMIT = 200;
-const DRAFT_VERSION = 2;
-const NOTICE_VERSION = 1;
+const DRAFT_VERSION = 3;
+const NOTICE_VERSION = 2;
 const REPO_URL = 'https://github.com/MatteoGranziera/sondaggi-in-bozza';
 const SOURCES = ['group', 'contact', 'number'];
 
@@ -31,13 +27,22 @@ function h(tag, attrs, ...children) {
 }
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const timeFmt = new Intl.DateTimeFormat('it-IT', { hour: '2-digit', minute: '2-digit' });
 const dayFmt = new Intl.DateTimeFormat('it-IT', { day: 'numeric', month: 'short' });
 const time = (t) => timeFmt.format(t);
 const when = (t) => (new Date(t).toDateString() === new Date().toDateString() ? 'oggi' : dayFmt.format(t)) + ' alle ' + timeFmt.format(t);
 const fold = (s) => s.normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase('it');
-const dest = (n) => `${n} ${n === 1 ? 'destinatario' : 'destinatari'}`;
+const kind = (r) => (r.source === 'group' ? 'gruppo' : r.source === 'number' ? 'numero scritto a mano' : 'contatto');
+
+function normRecipient(r) {
+  if (!r || !r.jid) return null;
+  const jid = String(r.jid);
+  return {
+    jid,
+    label: String(r.label || jid),
+    source: SOURCES.includes(r.source) ? r.source : jid.endsWith('@g.us') ? 'group' : 'contact',
+  };
+}
 
 function normalizeDraft(x) {
   const options = (Array.isArray(x.options) ? x.options : []).map(String).slice(0, MAX_OPTIONS);
@@ -52,22 +57,24 @@ function normalizeDraft(x) {
     choices: Array.isArray(s.choices) ? s.choices.map(String) : null,
     multiple: typeof s.multiple === 'boolean' ? s.multiple : null,
   }));
-  let recipients = (Array.isArray(x.recipients) ? x.recipients : []).filter((r) => r && r.jid)
-    .map((r) => ({
-      jid: String(r.jid),
-      label: String(r.label || r.jid),
-      source: SOURCES.includes(r.source) ? r.source : String(r.jid).endsWith('@g.us') ? 'group' : 'contact',
-    }));
-  // Drafts saved before v2 kept a recipient selected after a successful send.
-  if (x.v !== DRAFT_VERSION) recipients = recipients.filter((r) => !sends.some((s) => s.ok && s.jid === r.jid));
+  let recipient = normRecipient(x.recipient);
+  if (!recipient && Array.isArray(x.recipients)) {
+    // Up to v2 a draft held a list of recipients, and before v2 the ones already served stayed in it.
+    const left = x.recipients.map(normRecipient).filter(Boolean)
+      .filter((r) => x.v === 2 || !sends.some((s) => s.ok && s.jid === r.jid));
+    recipient = left[0] || null;
+  }
+  const origin = x.origin && typeof x.origin.chat === 'string'
+    ? { chat: x.origin.chat, at: Number(x.origin.at) || 0 } : null;
   return {
     v: DRAFT_VERSION,
     id: String(x.id || uid()),
     question: String(x.question || ''),
     options,
     multiple: !!x.multiple,
-    recipients,
+    recipient,
     sends,
+    origin,
     createdAt: Number(x.createdAt) || Date.now(),
     updatedAt: Number(x.updatedAt) || Date.now(),
   };
@@ -80,10 +87,9 @@ let wa = { state: 'checking', me: '', loadingSince: 0 };
 const blankList = () => ({ items: null, loading: false, error: '', filter: '' });
 const lists = { groups: blankList(), contacts: blankList() };
 let pickTab = 'groups';
+let chatPolls = { loading: false, error: '', chat: '', polls: null };
 let confirming = false;
 let sending = false;
-let progress = null;
-let stopRequested = false;
 let deleteArmed = false;
 let noticeAck = false;
 
@@ -91,13 +97,16 @@ const current = () => drafts.find((d) => d.id === currentId) || null;
 const byRecent = () => [...drafts].sort((a, b) => b.updatedAt - a.updatedAt);
 const cleanOptions = (d) => d.options.map((s) => s.trim()).filter(Boolean);
 const sentTo = (d) => new Set(d.sends.filter((s) => s.ok).map((s) => s.jid));
-const isGroup = (jid) => jid.endsWith('@g.us');
 const sameVersion = (s, d) => s.question === d.question.trim()
   && JSON.stringify(s.choices) === JSON.stringify(cleanOptions(d))
   && s.multiple === d.multiple;
+const samePoll = (d, p) => d.question.trim() === p.question.trim()
+  && JSON.stringify(cleanOptions(d)) === JSON.stringify(p.options.map((o) => o.trim()));
 
 function save() {
-  chrome.storage.local.set({ drafts, currentId, view }).catch(() => toast('Non riesco a salvare le bozze.'));
+  // The import screen is a detour: reopening the panel lands on the list.
+  chrome.storage.local.set({ drafts, currentId, view: view === 'import' ? 'list' : view })
+    .catch(() => toast('Non riesco a salvare le bozze.'));
 }
 
 function problems(d) {
@@ -109,9 +118,6 @@ function problems(d) {
   const seen = new Set();
   if (opts.some((o) => { const k = o.toLocaleLowerCase('it'); if (seen.has(k)) return true; seen.add(k); return false; })) {
     p.push('Due opzioni sono uguali: WhatsApp le vuole tutte diverse.');
-  }
-  if (d.recipients.length > MAX_PER_SEND) {
-    p.push(`Al massimo ${MAX_PER_SEND} destinatari per invio: togline qualcuno e mandalo in più volte.`);
   }
   return p;
 }
@@ -197,11 +203,13 @@ async function refresh() {
     if (wa.state === 'online') {
       if (lists.groups.items === null) loadList('groups');
       if (pickTab === 'contacts' && lists.contacts.items === null) loadList('contacts');
+      if (view === 'import' && chatPolls.polls === null) loadChatPolls();
     } else if (before === 'online') {
       lists.groups = blankList();
       lists.contacts = blankList();
     }
     if (view === 'edit') { renderPicker(); renderSend(); }
+    if (view === 'import') renderImport();
   }
   renderStatus();
   refreshing = false;
@@ -244,14 +252,14 @@ function renderStatus() {
   $('#statusNote').textContent = note;
 }
 
-async function loadList(kind) {
-  const l = lists[kind];
+async function loadList(which) {
+  const l = lists[which];
   if (l.loading) return;
   l.loading = true;
   l.error = '';
   renderPickerList();
   try {
-    const items = await call(kind);
+    const items = await call(which);
     l.items = items.filter((i) => i && i.id)
       .map((i) => ({ id: i.id, name: String(i.name || i.id), phone: i.phone || '' }))
       .sort((a, b) => a.name.localeCompare(b.name, 'it'));
@@ -263,49 +271,50 @@ async function loadList(kind) {
   renderPickerList();
 }
 
+async function loadChatPolls() {
+  if (chatPolls.loading) return;
+  chatPolls.loading = true;
+  chatPolls.error = '';
+  renderImport();
+  try {
+    const res = await call('chatPolls');
+    chatPolls.chat = res.chat;
+    chatPolls.polls = res.polls;
+  } catch (e) {
+    chatPolls.error = e.message;
+    chatPolls.polls = null;
+  } finally {
+    chatPolls.loading = false;
+  }
+  renderImport();
+}
+
 async function send(d) {
+  const r = d.recipient;
+  if (!r) return;
   confirming = false;
   sending = true;
-  stopRequested = false;
   closeEmoji();
+  renderSend();
   const question = d.question.trim();
   const choices = cleanOptions(d);
   const multiple = d.multiple;
-  // WhatsApp reads 0 as "any number of answers".
-  const args = { name: question, choices, selectableCount: multiple ? 0 : 1 };
-  const batch = d.recipients.slice(0, MAX_PER_SEND);
-  progress = { done: 0, total: batch.length };
-  let failed = 0;
-  renderSend();
-  for (let i = 0; i < batch.length; i++) {
-    const r = batch[i];
-    if (i > 0) await sleep(SEND_GAP_MS);
-    if (stopRequested) break;
-    let entry;
-    try {
-      const out = await call('sendPoll', { chatId: r.jid, ...args });
-      entry = { ok: true, info: out?.id || '' };
-    } catch (e) {
-      entry = { ok: false, info: e.message };
-    }
-    d.sends.push({ jid: r.jid, label: r.label, at: Date.now(), question, choices, multiple, ...entry });
-    if (entry.ok) d.recipients = d.recipients.filter((x) => x.jid !== r.jid);
-    else failed++;
-    progress.done = i + 1;
-    save();
-    if (view === 'edit' && currentId === d.id) { renderChips(); renderPickerList(); renderSend(); renderLog(); }
+  let entry;
+  try {
+    // WhatsApp reads 0 as "any number of answers".
+    const out = await call('sendPoll', { chatId: r.jid, name: question, choices, selectableCount: multiple ? 0 : 1 });
+    entry = { ok: true, info: out?.id || '' };
+  } catch (e) {
+    entry = { ok: false, info: e.message };
   }
-  const stopped = stopRequested && progress.done < progress.total;
+  d.sends.push({ jid: r.jid, label: r.label, at: Date.now(), question, choices, multiple, ...entry });
+  // Each send is a choice of its own: after it, the next recipient is picked again.
+  if (entry.ok && d.recipient?.jid === r.jid) d.recipient = null;
   sending = false;
-  progress = null;
-  stopRequested = false;
   d.updatedAt = Date.now();
   save();
-  renderView();
-  if (stopped) toast('Invio fermato: chi non l\'ha ricevuto resta fra i destinatari.');
-  else toast(failed === 0 ? 'Sondaggio inviato.'
-    : failed === 1 ? '1 invio non riuscito: resta fra i destinatari, trovi il motivo in fondo.'
-    : `${failed} invii non riusciti: restano fra i destinatari, trovi il motivo in fondo.`);
+  if (view === 'edit' && currentId === d.id) renderView();
+  toast(entry.ok ? `Inviato a ${r.label}.` : `Non è partito: ${entry.info}`);
 }
 
 // ---- drafts ----
@@ -320,27 +329,40 @@ function touch(d) {
   if (s) s.textContent = 'Salvato alle ' + time(d.updatedAt);
 }
 
-function select(id) {
+function go(next, id = currentId) {
   currentId = id;
-  view = id ? 'edit' : 'list';
+  view = next;
   confirming = false;
   save();
   renderView();
   window.scrollTo(0, 0);
 }
 
-function back() {
-  view = 'list';
-  confirming = false;
-  save();
-  renderView();
+const select = (id) => go(id ? 'edit' : 'list', id);
+const back = () => go('list');
+
+function openImport() {
+  chatPolls = { loading: false, error: '', chat: '', polls: null };
+  go('import');
+  if (wa.state === 'online') loadChatPolls();
 }
 
-function newDraft() {
-  const d = normalizeDraft({ id: uid(), v: DRAFT_VERSION });
+function newDraft(from) {
+  const d = normalizeDraft({ id: uid(), v: DRAFT_VERSION, ...from });
   drafts.push(d);
   select(d.id);
-  document.getElementById('q')?.focus();
+  if (!from) document.getElementById('q')?.focus();
+  return d;
+}
+
+function importPoll(p) {
+  newDraft({
+    question: p.question,
+    options: p.options.slice(0, MAX_OPTIONS),
+    multiple: p.multiple,
+    origin: { chat: chatPolls.chat, at: p.at },
+  });
+  toast('Bozza creata dal sondaggio della chat.');
 }
 
 function duplicate(src) {
@@ -362,8 +384,7 @@ function remove(d) {
     return;
   }
   drafts = drafts.filter((x) => x.id !== d.id);
-  currentId = null;
-  back();
+  go('list', null);
 }
 
 function focusOption(i) {
@@ -399,9 +420,8 @@ function moveOption(d, i, dir) {
   focusOption(j);
 }
 
-function toggleRecipient(d, rcp, on) {
-  d.recipients = d.recipients.filter((r) => r.jid !== rcp.jid);
-  if (on) d.recipients.push({ jid: rcp.jid, label: rcp.label, source: rcp.source });
+function setRecipient(d, rcp) {
+  d.recipient = rcp ? normRecipient(rcp) : null;
   confirming = false;
   touch(d);
   renderChips();
@@ -487,9 +507,9 @@ function noticeView() {
     h('h2', {}, 'Prima di cominciare'),
     h('ul', {},
       h('li', {}, 'Sondaggi in bozza è un progetto indipendente: non è di WhatsApp né di Meta e non è affiliato a loro.'),
-      h('li', {}, 'Lavora nella tua scheda di WhatsApp Web. Sondaggi, contatti e registro restano in questo browser: non vanno a nessun server.'),
-      h('li', {}, 'Mandali solo a gruppi e persone che ti conoscono e se li aspettano. WhatsApp può limitare o bloccare gli account che inviano messaggi non richiesti.'),
-      h('li', {}, `Non è fatto per gli invii di massa: al massimo ${MAX_PER_SEND} destinatari per volta, uno ogni ${SEND_GAP_MS / 1000} secondi, e ogni invio va confermato.`)),
+      h('li', {}, 'Serve a preparare e tenere in ordine i sondaggi. Lavora nella tua scheda di WhatsApp Web, e sondaggi, contatti e registro restano in questo browser: non vanno a nessun server.'),
+      h('li', {}, 'Ogni sondaggio parte verso una persona o un gruppo alla volta, solo dopo che hai confermato testo e destinatario.'),
+      h('li', {}, 'Mandalo solo a chi ti conosce e se lo aspetta. WhatsApp può limitare o bloccare gli account che inviano messaggi non richiesti.')),
     h('div', { class: 'row' },
       h('button', {
         class: 'btn',
@@ -515,7 +535,8 @@ function renderView() {
   deleteArmed = false;
   if (!noticeAck) { $('#view').replaceChildren(noticeView()); return; }
   if (view === 'edit' && !current()) view = 'list';
-  $('#view').replaceChildren(view === 'edit' ? editView(current()) : listView());
+  const screens = { edit: () => editView(current()), import: importView, list: listView };
+  $('#view').replaceChildren((screens[view] || listView)());
   if (view === 'edit') {
     renderChips();
     renderPicker();
@@ -523,6 +544,7 @@ function renderView() {
     renderSend();
     renderLog();
   }
+  if (view === 'import') renderImport();
 }
 
 function listView() {
@@ -530,25 +552,70 @@ function listView() {
   return h('div', {},
     h('div', { class: 'list-head' },
       h('h2', {}, 'Sondaggi'),
-      h('button', { class: 'btn small', onclick: newDraft }, 'Nuovo')),
+      h('div', { class: 'row' },
+        h('button', { class: 'btn ghost small', onclick: openImport, title: 'Crea una bozza da un sondaggio della chat aperta in WhatsApp Web' }, 'Da una chat'),
+        h('button', { class: 'btn small', onclick: () => newDraft() }, 'Nuovo'))),
     items.length
       ? h('ul', { class: 'drafts' }, items.map((d) => {
           const reached = sentTo(d).size;
-          const waiting = d.recipients.length;
           return h('li', {}, h('button', { class: 'draft', onclick: () => select(d.id) },
             h('span', { class: 'dq' }, d.question.trim() || 'Senza domanda'),
             h('span', { class: 'dm' },
               [`${cleanOptions(d).length} opzioni`,
-                reached && `inviato a ${reached}`,
-                waiting && `${waiting} da inviare`].filter(Boolean).join(' · '))));
+                reached ? `inviato a ${reached}` : 'mai inviato',
+                d.recipient && `pronto per ${d.recipient.label}`].filter(Boolean).join(' · '))));
         }))
       : h('div', { class: 'empty' },
           h('p', {}, 'Ancora nessun sondaggio.'),
-          h('p', { class: 'note' }, 'Preparane uno: lo modifichi quando vuoi e lo mandi a chi vuoi, anche più volte.')),
+          h('p', { class: 'note' }, 'Preparane uno con Nuovo, o prendi un sondaggio che c\'è già in una chat con Da una chat.')),
     h('div', { class: 'list-foot' },
-      h('button', { class: 'btn ghost small', onclick: exportDrafts, disabled: !drafts.length }, 'Esporta'),
-      h('button', { class: 'btn ghost small', onclick: () => $('#importFile').click() }, 'Importa')),
+      h('button', { class: 'btn ghost small', onclick: exportDrafts, disabled: !drafts.length }, 'Esporta file'),
+      h('button', { class: 'btn ghost small', onclick: () => $('#importFile').click() }, 'Importa file')),
     footer());
+}
+
+function importView() {
+  return h('div', {},
+    h('div', { class: 'ed-head' },
+      h('button', { class: 'back', onclick: back }, '‹ Sondaggi'),
+      h('span', { class: 'saved' }),
+      h('button', { class: 'btn ghost small', id: 'btnChatPolls', onclick: loadChatPolls }, 'Aggiorna')),
+    h('div', { class: 'card' },
+      h('h2', {}, 'Da una chat'),
+      h('p', { class: 'note', style: 'margin:0 0 12px' },
+        'Apri in WhatsApp Web la chat con il sondaggio, poi scegli quale trasformare in bozza. Il sondaggio in chat resta com\'è.'),
+      h('div', { id: 'chatPolls' })));
+}
+
+function renderImport() {
+  const box = document.getElementById('chatPolls');
+  if (!box) return;
+  const btn = document.getElementById('btnChatPolls');
+  if (btn) btn.disabled = chatPolls.loading || wa.state !== 'online';
+  const say = (t) => box.replaceChildren(h('p', { class: 'note pad' }, t));
+  if (wa.state !== 'online') return say(statusInfo()[1] + '.');
+  if (chatPolls.loading) return say('Cerco i sondaggi nella chat aperta…');
+  if (chatPolls.error) return say(chatPolls.error);
+  if (chatPolls.polls === null) return say('Premi Aggiorna per cercare i sondaggi nella chat aperta.');
+  if (!chatPolls.polls.length) {
+    return say(`Nella chat «${chatPolls.chat}» non trovo sondaggi. Se è più indietro, scorri la chat in WhatsApp Web fino a vederlo e premi Aggiorna.`);
+  }
+  box.replaceChildren(
+    h('p', { class: 'f' }, `Chat «${chatPolls.chat}»`),
+    h('ul', { class: 'chat-polls' }, chatPolls.polls.map((p) => {
+      const known = drafts.some((d) => samePoll(d, p));
+      return h('li', {},
+        h('div', { class: 'cp-q' }, p.question),
+        h('div', { class: 'cp-o' }, p.options.join(' · ')),
+        h('div', { class: 'cp-foot' },
+          h('span', { class: 'lmeta' }, [
+            p.multiple ? 'più risposte' : 'una risposta',
+            p.at && when(p.at),
+            p.fromMe ? 'tuo' : p.author && 'di ' + p.author,
+          ].filter(Boolean).join(' · ')),
+          known && h('span', { class: 'tag soft' }, 'già fra le bozze'),
+          h('button', { class: 'btn small', onclick: () => importPoll(p) }, 'Crea bozza')));
+    })));
 }
 
 function editView(d) {
@@ -573,9 +640,9 @@ function editView(d) {
     h('input', { type: 'radio', name: 'multi', checked: d.multiple === val, onchange: () => { d.multiple = val; touch(d); } }),
     text);
 
-  const tab = (kind, label) => h('button', {
-    class: 'tab', role: 'tab', 'data-tab': kind, 'aria-selected': String(pickTab === kind),
-    onclick: () => selectTab(kind),
+  const tab = (which, label) => h('button', {
+    class: 'tab', role: 'tab', 'data-tab': which, 'aria-selected': String(pickTab === which),
+    onclick: () => selectTab(which),
   }, label);
 
   return h('div', {},
@@ -584,6 +651,9 @@ function editView(d) {
       h('span', { class: 'saved', id: 'saved' }, 'Salvato alle ' + time(d.updatedAt)),
       h('button', { class: 'btn ghost small', onclick: () => duplicate(d) }, 'Duplica'),
       h('button', { class: 'btn danger small', id: 'btnDelete', onclick: () => remove(d) }, 'Elimina')),
+
+    d.origin && h('p', { class: 'note', style: 'margin:0 0 10px' },
+      `Preso dalla chat «${d.origin.chat}»` + (d.origin.at ? `, dove era stato mandato ${when(d.origin.at)}.` : '.')),
 
     d.sends.some((s) => s.ok) && h('div', { class: 'infobar' },
       'Su WhatsApp un sondaggio inviato non si può più modificare. Le modifiche che fai qui valgono per i prossimi invii.'),
@@ -606,7 +676,7 @@ function editView(d) {
         h('div', { class: 'radio' }, radio(false, 'Una sola'), radio(true, 'Più di una')))),
 
     h('div', { class: 'card' },
-      h('div', { class: 'f' }, 'Destinatari'),
+      h('div', { class: 'f' }, 'Destinatario'),
       h('div', { class: 'chips', id: 'chips' }),
       h('div', { class: 'tabs', role: 'tablist' }, tab('groups', 'Gruppi'), tab('contacts', 'Contatti')),
       h('div', { id: 'picker' })),
@@ -628,36 +698,34 @@ function renderChips() {
   const box = document.getElementById('chips');
   const d = current();
   if (!box || !d) return;
-  const sent = sentTo(d);
-  box.replaceChildren(...(d.recipients.length
-    ? d.recipients.map((r) => h('span', { class: 'chip', title: r.jid },
+  const r = d.recipient;
+  box.replaceChildren(r
+    ? h('span', { class: 'chip', title: r.jid },
         h('span', {}, r.label),
-        sent.has(r.jid) && h('small', {}, 'già inviato'),
-        h('button', { 'aria-label': 'Togli ' + r.label, onclick: () => toggleRecipient(d, r, false) }, '×')))
-    : [h('span', { class: 'note', style: 'margin:0' }, d.sends.some((s) => s.ok)
-        ? 'Scegli a chi altro mandarlo.'
-        : 'Scegli a chi mandarlo: un gruppo, un contatto o un numero.')]));
+        h('small', {}, [kind(r), sentTo(d).has(r.jid) && 'già inviato'].filter(Boolean).join(' · ')),
+        h('button', { 'aria-label': 'Togli ' + r.label, onclick: () => setRecipient(d, null) }, '×'))
+    : h('span', { class: 'note', style: 'margin:0' }, 'Scegli una persona o un gruppo: il sondaggio parte verso un destinatario alla volta.'));
 }
 
-function selectTab(kind) {
-  pickTab = kind;
-  for (const t of document.querySelectorAll('.tab')) t.setAttribute('aria-selected', String(t.dataset.tab === kind));
+function selectTab(which) {
+  pickTab = which;
+  for (const t of document.querySelectorAll('.tab')) t.setAttribute('aria-selected', String(t.dataset.tab === which));
   renderPicker();
-  if (lists[kind].items === null && wa.state === 'online') loadList(kind);
+  if (lists[which].items === null && wa.state === 'online') loadList(which);
   document.querySelector('#picker input')?.focus();
 }
 
-// A search that is only a phone number can be added as it is, in or out of the address book.
+// A search that is only a phone number can be picked as it is, in or out of the address book.
 function typedNumber(s) {
   const t = s.trim();
   return /^[+\d\s().-]+$/.test(t) ? normalizeNumber(t) : null;
 }
 
-function addTypedNumber(d, jid) {
-  toggleRecipient(d, { jid, label: '+' + jid.split('@')[0], source: 'number' }, true);
+function pickTypedNumber(d, jid) {
+  setRecipient(d, { jid, label: '+' + jid.split('@')[0], source: 'number' });
   lists.contacts.filter = '';
   const search = document.querySelector('#picker input[type=search]');
-  if (search) { search.value = ''; search.focus(); }
+  if (search) search.value = '';
   renderPickerList();
 }
 
@@ -676,7 +744,7 @@ function renderPicker() {
       onkeydown: (e) => {
         if (e.key !== 'Enter' || !contacts) return;
         const jid = typedNumber(l.filter);
-        if (jid) { e.preventDefault(); addTypedNumber(d, jid); }
+        if (jid) { e.preventDefault(); pickTypedNumber(d, jid); }
       },
     }),
     h('div', { class: 'glist', id: 'pickList' }),
@@ -701,9 +769,9 @@ function renderPickerList() {
   const jid = contacts ? typedNumber(l.filter) : null;
   if (jid && !(l.items || []).some((i) => i.id === jid)) {
     const label = '+' + jid.split('@')[0];
-    const on = d.recipients.some((r) => r.jid === jid);
-    box.append(h('button', { class: 'addnum', disabled: on, onclick: () => addTypedNumber(d, jid) },
-      on ? `${label} è già fra i destinatari` : `+ Aggiungi il numero ${label}`));
+    const on = d.recipient?.jid === jid;
+    box.append(h('button', { class: 'addnum', disabled: on, onclick: () => pickTypedNumber(d, jid) },
+      on ? `${label} è già il destinatario` : `+ Usa il numero ${label}`));
   }
   const orType = contacts ? ' Puoi comunque scrivere un numero qui sopra.' : '';
   if (l.loading) return say(`Carico i ${noun}…`);
@@ -721,11 +789,10 @@ function renderPickerList() {
   }
   const sent = sentTo(d);
   for (const i of matches.slice(0, LIST_LIMIT)) {
-    const on = d.recipients.some((r) => r.jid === i.id);
     box.append(h('label', { class: 'item' },
       h('input', {
-        type: 'checkbox', checked: on,
-        onchange: (e) => toggleRecipient(d, { jid: i.id, label: i.name, source: contacts ? 'contact' : 'group' }, e.target.checked),
+        type: 'radio', name: 'recipient', checked: d.recipient?.jid === i.id,
+        onchange: () => setRecipient(d, { jid: i.id, label: i.name, source: contacts ? 'contact' : 'group' }),
       }),
       h('span', { class: 'iname' }, h('span', {}, i.name), i.phone && i.name !== '+' + i.phone && h('small', {}, '+' + i.phone)),
       sent.has(i.id) && h('span', { class: 'tag soft' }, 'inviato')));
@@ -751,47 +818,28 @@ function renderSend() {
   if (!box || !d) return;
   box.replaceChildren();
   const probs = problems(d);
-  const n = d.recipients.length;
-  const sent = sentTo(d);
-  const again = d.recipients.filter((r) => sent.has(r.jid)).length;
+  const r = d.recipient;
   if (probs.length) box.append(h('ul', { class: 'probs' }, probs.map((p) => h('li', {}, p))));
   const blocked = wa.state === 'online' ? '' : statusInfo()[1] + '.';
-  if (!n) box.append(h('p', { class: 'note', style: 'margin:0 0 10px' }, 'Nessun destinatario scelto.'));
+  if (!r) box.append(h('p', { class: 'note', style: 'margin:0 0 10px' }, 'Nessun destinatario scelto.'));
   else if (blocked) box.append(h('p', { class: 'note', style: 'margin:0 0 10px' }, blocked));
-  const can = !probs.length && n > 0 && !sending && !blocked;
-
-  if (sending && progress) {
-    box.append(h('div', { class: 'confirm' },
-      h('span', {}, stopRequested
-        ? 'Mi fermo dopo questo invio…'
-        : `Invio ${Math.min(progress.done + 1, progress.total)} di ${progress.total}…`),
-      !stopRequested && h('button', { class: 'btn ghost', onclick: () => { stopRequested = true; renderSend(); } }, 'Ferma')));
-    return;
-  }
+  const can = !probs.length && !!r && !sending && !blocked;
 
   if (confirming && can) {
-    // The store policy asks for the content and every recipient to be confirmed before sending.
-    const typed = d.recipients.filter((r) => r.source === 'number').length;
+    // The store policy asks for the content and the recipient to be confirmed before sending.
     box.append(h('div', { class: 'confirm-box' },
       h('p', {}, 'Stai per mandare ', h('b', {}, '«' + d.question.trim() + '»'),
-        ` (${cleanOptions(d).length} opzioni, ${d.multiple ? 'più risposte' : 'una risposta'}) a:`),
-      h('ul', { class: 'confirm-list' }, d.recipients.map((r) => h('li', {},
-        h('span', {}, r.label),
-        h('small', {}, [
-          r.source === 'group' ? 'gruppo' : r.source === 'number' ? 'numero scritto a mano' : 'contatto',
-          sent.has(r.jid) && "l'ha già ricevuto",
-        ].filter(Boolean).join(' · '))))),
-      again > 0 && h('p', { class: 'note' }, again === 1
-        ? "Uno dei destinatari l'ha già ricevuto: gli arriverà di nuovo."
-        : `${again} destinatari l'hanno già ricevuto: gli arriverà di nuovo.`),
-      typed > 0 && h('p', { class: 'note warn' },
+        ` (${cleanOptions(d).length} opzioni, ${d.multiple ? 'più risposte' : 'una risposta'}) a `,
+        h('b', {}, r.label), ` (${kind(r)}).`),
+      sentTo(d).has(r.jid) && h('p', { class: 'note' }, "L'ha già ricevuto: gli arriverà di nuovo."),
+      r.source === 'number' && h('p', { class: 'note warn' },
         'Un numero scritto a mano riceve il sondaggio anche se non ti conosce. Mandalo solo a chi se lo aspetta.'),
       h('div', { class: 'confirm' },
         h('button', { class: 'btn', onclick: () => send(d) }, 'Sì, invia'),
         h('button', { class: 'btn ghost', onclick: () => { confirming = false; renderSend(); } }, 'Annulla'))));
   } else {
-    box.append(h('button', { class: 'btn', disabled: !can, onclick: () => { confirming = true; renderSend(); } },
-      n ? `Invia a ${dest(n)}` : 'Invia'));
+    box.append(h('button', { class: 'btn send', disabled: !can, onclick: () => { confirming = true; renderSend(); } },
+      sending ? 'Invio in corso…' : r ? `Invia a ${r.label}` : 'Invia'));
   }
 }
 

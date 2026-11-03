@@ -18,6 +18,14 @@ window.chrome = (() => {
     sent: [],
     failFor: new Set(['120363000002@g.us']),
     contactsError: '',
+    chatPolls: {
+      chat: 'Famiglia',
+      polls: [
+        { id: 'p2', question: 'Pranzo di domenica: chi porta cosa?', options: ['Dolce', 'Vino', 'Pane'], multiple: true, at: Date.now() - 3600000, fromMe: false, author: 'Mamma' },
+        { id: 'p1', question: 'Cena venerdì?', options: ['Pizzeria', 'Sushi'], multiple: false, at: Date.now() - 86400000, fromMe: true, author: '' },
+      ],
+    },
+    chatPollsError: '',
     listeners: [],
     store: () => store,
   };
@@ -35,6 +43,7 @@ window.chrome = (() => {
         if (msg.cmd === 'state') return { ok: true, result: mock.state };
         if (msg.cmd === 'groups') return { ok: true, result: groups };
         if (msg.cmd === 'contacts') return mock.contactsError ? { ok: false, error: mock.contactsError } : { ok: true, result: contacts };
+        if (msg.cmd === 'chatPolls') return mock.chatPollsError ? { ok: false, error: mock.chatPollsError } : { ok: true, result: mock.chatPolls };
         if (msg.cmd === 'sendPoll') {
           mock.sent.push(msg.args);
           if (mock.failFor.has(msg.args.chatId)) return { ok: false, error: 'Non puoi scrivere in questo gruppo.' };

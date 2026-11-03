@@ -11,8 +11,11 @@ server e non raccoglie dati: tutto quello che usa resta nel tuo browser.
   `chrome.storage.local`, cioè nel profilo di Chrome sul tuo computer.
 - **I nomi e gli identificativi dei tuoi gruppi, e i nomi e i numeri dei tuoi contatti**: letti dalla
   scheda di WhatsApp Web aperta nel browser, solo quando li chiedi, per mostrarteli nell'elenco. Restano
-  in memoria finché il pannello è aperto. Vengono salvati solo quelli che scegli come destinatari,
-  insieme al sondaggio.
+  in memoria finché il pannello è aperto. Viene salvato solo quello che scegli come destinatario,
+  insieme al sondaggio e al registro degli invii.
+- **I sondaggi della chat aperta**, solo quando premi "Da una chat": domanda, opzioni, data e nome di
+  chi l'ha mandato, per mostrarteli. Diventa una bozza solo quello che scegli. Gli altri messaggi della
+  chat non vengono letti.
 
 ## Cosa esce dal tuo computer
 
@@ -24,7 +27,8 @@ servizio esterno per le anteprime dei link: l'estensione li tiene spenti tutti e
 ## Cosa non fa
 
 Non vende, non cede e non condivide dati con nessuno. Non li usa per pubblicità, profilazione o per
-valutare l'affidabilità creditizia. Non legge i tuoi messaggi.
+valutare l'affidabilità creditizia. Non legge i tuoi messaggi, a parte i sondaggi della chat aperta
+quando lo chiedi tu.
 
 ## Come cancellare i dati
 
@@ -47,8 +51,10 @@ Meta. It has no server and collects no data: everything it uses stays in your br
 **What it uses and where it stays.** The polls you write and their send log are stored in
 `chrome.storage.local`, in your Chrome profile on your device. The names and IDs of your groups, and the
 names and numbers of your contacts, are read from the WhatsApp Web tab open in your browser, only when
-you ask, to list them for you. They stay in memory while the panel is open; only the ones you pick as
-recipients are saved, together with the poll.
+you ask, to list them for you. They stay in memory while the panel is open; only the one you pick as
+recipient is saved, together with the poll and its send log. When you press "Da una chat" ("from a
+chat"), the polls in the open chat (question, options, date, sender name) are read to list them; only
+the one you pick becomes a draft, and no other message is read.
 
 **What leaves your device.** Only the polls you send, to the recipients you confirm, through WhatsApp Web,
 exactly as if you sent them by hand. The extension sends no data to any other server: no analytics, no
@@ -56,7 +62,8 @@ ads, no third-party services. The bundled WA-JS library would by default use Goo
 external link-preview service; the extension keeps both turned off.
 
 **What it does not do.** It does not sell, transfer or share data with anyone, and does not use it for
-advertising, profiling or creditworthiness. It does not read your messages.
+advertising, profiling or creditworthiness. It does not read your messages, except the polls in the open
+chat when you ask for them.
 
 **Deleting your data.** Delete polls from the panel, or uninstall the extension: Chrome removes
 everything it stored.

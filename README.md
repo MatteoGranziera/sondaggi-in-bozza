@@ -1,9 +1,10 @@
 # Sondaggi in bozza
 
-Un'estensione di Chrome per preparare i sondaggi da mandare con WhatsApp Web: li scrivi con calma, li
-tieni in bozza, li modifichi quando vuoi e li mandi a gruppi e contatti, anche più volte e a persone
-nuove. Vive nel pannello laterale di Chrome, accanto a WhatsApp Web, e usa la sessione già aperta nel
-browser: niente server, niente account in più.
+Un'estensione di Chrome per tenere i sondaggi di WhatsApp in bozza: li scrivi con calma, o li prendi da
+una chat dove ci sono già, li modifichi quando vuoi e li mandi quando sono pronti, a una persona o a un
+gruppo alla volta. Per esempio: lo provi con un amico, lo correggi, poi lo mandi al gruppo. Vive nel
+pannello laterale di Chrome, accanto a WhatsApp Web, e usa la sessione già aperta nel browser: niente
+server, niente account in più.
 
 > Progetto indipendente e open source, **non affiliato a WhatsApp né a Meta**. WhatsApp è un marchio di
 > WhatsApp LLC. L'interfaccia è in italiano.
@@ -30,28 +31,31 @@ un'altra estensione, senza i sondaggi salvati (usa Esporta prima, se devi).
 
 - **Nuovo** crea un sondaggio: domanda, da 2 a 12 opzioni (Invio su un'opzione ne aggiunge una sotto,
   le frecce le riordinano), una sola risposta o più di una.
+- **Da una chat** prende un sondaggio che c'è già: apri la chat in WhatsApp Web, premi Aggiorna se
+  serve e scegli quale trasformare in bozza. Il sondaggio in chat resta com'è. Legge i messaggi che
+  WhatsApp Web ha già caricato: se il sondaggio è molto indietro, scorri la chat fino a vederlo.
 - La faccina nella domanda e in ogni opzione apre le **emoji**, con la ricerca in italiano. L'emoji va
   dove c'è il cursore; Esc o un clic fuori la chiude.
-- **Destinatari** ha due schede. **Gruppi**: le community e i gruppi dove non puoi scrivere non
-  compaiono. **Contatti**: la rubrica e le persone con cui hai una chat, da cercare per nome o numero.
-  Nella stessa ricerca puoi scrivere un numero con il prefisso e aggiungerlo con Invio.
-- **Invia** mostra il testo e l'elenco completo dei destinatari, e manda solo dopo la conferma. Durante
-  l'invio vedi a che punto è e puoi fermarlo. Chi l'ha ricevuto esce dalla selezione; chi no resta
-  selezionato, e basta premere di nuovo Invia per riprovare.
+- **Destinatario**: un gruppo o una persona per volta. **Gruppi**: le community e i gruppi dove non puoi
+  scrivere non compaiono. **Contatti**: la rubrica e le persone con cui hai una chat, da cercare per
+  nome o numero. Nella stessa ricerca puoi scrivere un numero con il prefisso e sceglierlo con Invio.
+- **Invia** mostra il testo e il destinatario, e manda solo dopo la conferma. Dopo l'invio la scelta si
+  azzera: per mandarlo a qualcun altro lo scegli di nuovo. Se non parte, il destinatario resta e basta
+  premere di nuovo Invia.
 - Il sondaggio resta sempre **modificabile**. Su WhatsApp quello già inviato non cambia: le modifiche
   valgono per i prossimi invii. Chi l'ha già ricevuto è segnato, anche nella conferma.
 - In fondo c'è il **registro degli invii**: chi, quando, com'è andata, e se è partita una versione
   precedente del testo.
-- **Duplica** fa una copia senza registro. **Esporta** e **Importa** salvano e ripristinano tutto in un
-  file JSON.
+- **Duplica** fa una copia senza registro. **Esporta file** e **Importa file** salvano e ripristinano
+  tutto in un file JSON.
 
 ## Uso responsabile
 
-Sondaggi in bozza è fatto per mandare sondaggi a gruppi e persone che ti conoscono e se li aspettano,
-non per gli invii di massa. Per questo:
+Sondaggi in bozza serve a gestire le bozze, non a fare invii di massa: si manda a gruppi e persone che
+ti conoscono e se lo aspettano. Per questo:
 
-- ogni invio va confermato vedendo testo e destinatari;
-- al massimo **20 destinatari per invio**, uno ogni **3 secondi**;
+- ogni invio va a **un solo destinatario** e va confermato vedendo testo e destinatario;
+- dopo ogni invio il destinatario va scelto di nuovo;
 - un numero scritto a mano viene segnalato nella conferma, perché lo riceve anche chi non ti conosce.
 
 Non è uno strumento ufficiale: WhatsApp può limitare o bloccare gli account che mandano messaggi non
@@ -91,8 +95,8 @@ dell'estensione vera.
   anteprima, invio e registro. Salva in `chrome.storage.local`.
 - `emoji.js`: prepara il selettore delle emoji in italiano.
 - `content/config.js`: configura WA-JS prima che parta (statistiche spente).
-- `content/main.js`: gira dentro WhatsApp Web insieme a WA-JS e risponde a quattro comandi: stato,
-  gruppi, contatti, invio di un sondaggio.
+- `content/main.js`: gira dentro WhatsApp Web insieme a WA-JS e risponde a cinque comandi: stato,
+  gruppi, contatti, sondaggi della chat aperta, invio di un sondaggio.
 - `content/bridge.js`: fa da ponte fra il pannello e `main.js`, che non possono parlarsi direttamente.
 - `vendor/wa-js/`: [WA-JS](https://github.com/wppconnect-team/wa-js) di WPPConnect (Apache-2.0),
   versione in `VERSION`.

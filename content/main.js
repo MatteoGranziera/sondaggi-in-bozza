@@ -41,6 +41,26 @@
     };
   }
 
+  // Reads a poll out of a message, whether WA-JS hands back a raw message or a model.
+  function pollFrom(m) {
+    if (!m || m.type !== 'poll_creation') return null;
+    const options = (Array.isArray(m.pollOptions) ? m.pollOptions : [])
+      .map((o) => String(o?.name ?? '').trim()).filter(Boolean);
+    const question = String(m.pollName ?? '').trim();
+    if (!question || options.length < 2) return null;
+    const id = m.id || {};
+    return {
+      id: String(id._serialized ?? id ?? ''),
+      question,
+      options,
+      // WhatsApp stores 1 for "one answer" and 0 for "any number of answers".
+      multiple: Number(m.pollSelectableOptionsCount ?? 0) !== 1,
+      at: (Number(m.t) || 0) * 1000,
+      fromMe: !!(id.fromMe ?? m.fromMe),
+      author: String(m.notifyName || m.senderObj?.pushname || ''),
+    };
+  }
+
   function requireOnline() {
     const s = state();
     if (!s.ready) throw new Error('WhatsApp Web si sta ancora caricando.');
@@ -74,6 +94,28 @@
       for (const ch of chats) add(person(ch, safe(() => ch.contact)));
       if (!byKey.size && failure) throw failure;
       return [...byKey.values()];
+    },
+
+    // The polls in the chat open in WhatsApp Web, newest first: only what the page already holds.
+    async chatPolls() {
+      requireOnline();
+      const w = wpp();
+      const chat = w.chat.getActiveChat();
+      if (!chat) throw new Error('Apri in WhatsApp Web la chat con il sondaggio, poi premi Aggiorna.');
+      let msgs = await w.chat.getMessages(chat.id, { count: 400 }).catch(() => null);
+      if (!Array.isArray(msgs) || !msgs.length) msgs = safe(() => chat.msgs.getModelsArray()) || [];
+      const seen = new Set();
+      const polls = [];
+      for (const m of msgs) {
+        const p = safe(() => pollFrom(m));
+        if (!p || seen.has(p.id)) continue;
+        seen.add(p.id);
+        polls.push(p);
+      }
+      polls.sort((a, b) => b.at - a.at);
+      const name = [() => chat.formattedTitle, () => chat.name, () => chat.contact?.name].map(safe)
+        .find((v) => typeof v === 'string' && v.trim());
+      return { chat: name || String(chat.id.user), polls };
     },
 
     async sendPoll({ chatId, name, choices, selectableCount }) {

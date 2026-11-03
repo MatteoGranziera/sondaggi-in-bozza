@@ -2,6 +2,7 @@
 // analytics must stay off, and the panel must reach the page through the bridge.
 // Needs a browser that still honours --load-extension, for example Chrome for Testing:
 //   CHROME_BIN=".../Google Chrome for Testing" node tests/extension.test.mjs
+import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromeBin, connect, launch, newTab, reporter, sleep, targets } from './lib/cdp.mjs';
@@ -37,6 +38,40 @@ try {
   }
   check('WA-JS ready on WhatsApp Web', ready);
   check('WA-JS analytics disabled', await wa.ev(`WPP.config.disableGoogleAnalytics === true`));
+  check('WA-JS has every function the extension calls', await wa.ev(`['getActiveChat', 'getMessages', 'list', 'sendCreatePollMessage'].every((f) => typeof WPP.chat[f] === 'function')
+    && typeof WPP.contact.list === 'function' && typeof WPP.conn.isMainReady === 'function'`));
+
+  // The readers in main.js, run on real WhatsApp Web models built here.
+  const src = readFileSync(join(ROOT, 'content/main.js'), 'utf8');
+  const readers = ['const safe = [^\\n]+\\n', 'function person\\([\\s\\S]*?\\n  }\\n', 'function pollFrom\\([\\s\\S]*?\\n  }\\n']
+    .map((re) => src.match(new RegExp(re))[0]).join('\n');
+  const read = JSON.parse(await wa.ev(`(() => {
+    ${readers}
+    const W = WPP.whatsapp;
+    const wid = (s) => (W.WidFactory?.createWid || WPP.util.createWid)(s);
+    const contact = new W.ContactModel({ id: wid('393331112222@c.us'), name: 'Mario Rossi' });
+    // getMessages hands back serialized messages; this is their shape for a poll.
+    const raw = { id: { fromMe: false, remote: '120363000001@g.us', id: 'TESTPOLL', _serialized: 'false_120363000001@g.us_TESTPOLL' },
+      type: 'poll_creation', pollName: 'Cena?', t: 1700000000, notifyName: 'Mario',
+      pollOptions: [{ name: 'Pizza', localId: 0 }, { name: 'Sushi', localId: 1 }], pollSelectableOptionsCount: 1 };
+    // A real MsgKey needs a logged-in account; the model is tried with the raw id instead.
+    let fromModel = null, modelError = '';
+    try { fromModel = pollFrom(new W.MsgModel(raw)); } catch (e) { modelError = e.message; }
+    return JSON.stringify({
+      isGroupIsAFunction: typeof contact.isGroup === 'function',
+      person: person(contact, contact),
+      fromModel, modelError,
+      fromRaw: pollFrom(raw),
+      notAPoll: pollFrom({ ...raw, type: 'chat', body: 'ciao' }),
+    });
+  })()`));
+  check('contact read despite isGroup being a function', read.isGroupIsAFunction && read.person?.name === 'Mario Rossi' && read.person?.id === '393331112222@c.us', JSON.stringify(read.person));
+  const expected = { question: 'Cena?', options: ['Pizza', 'Sushi'], multiple: false, at: 1700000000000, fromMe: false, author: 'Mario' };
+  const same = (p) => p && Object.entries(expected).every(([k, v]) => JSON.stringify(p[k]) === JSON.stringify(v));
+  check('poll read from a raw message', same(read.fromRaw), JSON.stringify(read.fromRaw));
+  if (read.modelError) console.log(`skip poll read from a message model (logged out: ${read.modelError})`);
+  else check('poll read from a message model', same(read.fromModel), JSON.stringify(read.fromModel));
+  check('other messages are not polls', read.notAPoll === null);
   await sleep(5000);
   const tracked = wa.requests.filter((u) => TRACKERS.test(u));
   check('no requests to analytics or link-preview servers', tracked.length === 0, tracked.join(' '));
