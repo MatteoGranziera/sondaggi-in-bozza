@@ -13,7 +13,7 @@ Web, e usa la sessione già aperta nel browser: niente server, niente account in
 
 ## Installazione
 
-Dal Chrome Web Store, quando sarà pubblicata (per ora in prova, non in elenco). Oppure dal codice:
+Dal Chrome Web Store, quando la revisione l'avrà approvata. Oppure dal codice:
 
 1. Scarica lo zip dell'ultima [release](https://github.com/MatteoGranziera/sondaggi-in-bozza/releases)
    (o clona il repository) e scompattalo dove resterà.

@@ -1,8 +1,7 @@
 # Scheda per il Chrome Web Store
 
-Testi pronti da incollare nella dashboard dello sviluppatore. La prima pubblicazione è una prova:
-**visibilità "Non in elenco"**, così la installa solo chi ha il link. Se la revisione va bene, si può
-passare a "Pubblica" più tardi.
+Testi pronti da incollare nella dashboard dello sviluppatore. Visibilità: **Pubblico**, gratuita, in
+tutte le regioni.
 
 ## Prima di cominciare
 
@@ -27,7 +26,7 @@ Lo stesso zip è allegato a ogni release su GitHub.
 - **Nome:** Sondaggi in bozza (preso dal manifest)
 - **Riepilogo** (dal manifest): Sondaggi in bozza da preparare, modificare e mandare nella chat aperta
   di WhatsApp Web. Non affiliata a WhatsApp né a Meta.
-- **Categoria:** Produttività > Strumenti
+- **Categoria:** Produttività > Comunicazione
 - **Lingua:** Italiano
 - **Icona dello Store (128×128, disegno 96×96 con margine trasparente):** `store/icon-store-128.png`
 - **Tessera promozionale piccola (440×280, obbligatoria):** `store/promo-small-440x280.png`
