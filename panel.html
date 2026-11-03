@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sondaggi in bozza</title>
+<link rel="stylesheet" href="panel.css">
+</head>
+<body>
+<header class="top">
+  <div class="status">
+    <span id="pill" class="pill">Controllo WhatsApp Web…</span>
+    <button id="statusAction" class="btn small" hidden></button>
+  </div>
+  <p id="statusNote" class="note" hidden></p>
+</header>
+<main id="view"></main>
+<div id="toast" class="toast" role="status" hidden></div>
+<input id="importFile" type="file" accept="application/json,.json" hidden>
+<script type="module" src="emoji.js"></script>
+<script src="panel.js"></script>
+</body>
+</html>
