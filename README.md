@@ -82,7 +82,8 @@ node tests/panel.test.mjs        # il pannello in Chrome headless, con un WhatsA
 node tests/extension.test.mjs    # l'estensione vera su web.whatsapp.com, senza account collegato
 sh scripts/package.sh            # lo zip per il Chrome Web Store, in dist/
 sh scripts/update-wa-js.sh       # aggiorna WA-JS all'ultima versione (o: ... 4.7.2)
-node store/screenshots.mjs       # rigenera le immagini per lo Store
+node store/screenshots.mjs       # rigenera screenshot e tessera promozionale per lo Store
+python3 scripts/make-icons.py    # rigenera le icone, compresa quella per lo Store
 ```
 
 La prova del pannello usa Chrome; `CHROME_BIN` sceglie un altro browser, `SHOTS_DIR` salva le
