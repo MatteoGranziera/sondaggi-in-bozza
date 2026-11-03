@@ -107,6 +107,8 @@ dell'estensione vera.
   versione in `VERSION`.
 - `vendor/emoji-picker/`: [emoji-picker-element](https://github.com/nolanlawson/emoji-picker-element) e
   i suoi dati in italiano (Apache-2.0), versione in `VERSION`.
+- `icons/`: le icone dell'estensione; la sorgente è `icon.svg`, i PNG li disegna
+  `scripts/make-icons.py`.
 - `store/`: testi, privacy e immagini per il Chrome Web Store.
 - `tests/`: le prove, senza dipendenze.
 

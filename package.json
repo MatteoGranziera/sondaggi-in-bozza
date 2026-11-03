@@ -1,6 +1,6 @@
 {
   "name": "sondaggi-in-bozza",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "private": true,
   "description": "Chrome extension to draft WhatsApp polls and send them to the chat open in WhatsApp Web.",
   "license": "MIT",
