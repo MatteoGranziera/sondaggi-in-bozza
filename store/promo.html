@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>Sondaggi in bozza</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 440px; height: 280px; overflow: hidden; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #fff;
+    background: linear-gradient(135deg, #1b8a5a 0%, #146b46 100%);
+    display: flex; flex-direction: column; justify-content: center; padding: 0 36px; position: relative;
+  }
+  .brand { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
+  .brand img { width: 56px; height: 56px; border-radius: 13px; box-shadow: 0 0 0 2px rgba(255, 255, 255, .25); }
+  .brand span { font-size: 27px; font-weight: 700; letter-spacing: -.01em; }
+  p { margin: 0; font-size: 18px; line-height: 1.35; color: rgba(255, 255, 255, .92); max-width: 330px; }
+  .bubble {
+    position: absolute; right: -14px; bottom: -20px; width: 150px; padding: 12px 14px; border-radius: 12px;
+    background: rgba(255, 255, 255, .14); transform: rotate(-6deg);
+  }
+  .bubble i { display: block; height: 9px; border-radius: 5px; background: rgba(255, 255, 255, .55); margin: 7px 0; }
+</style>
+</head>
+<body>
+  <div class="brand"><img src="../icons/128.png" alt=""><span>Sondaggi in bozza</span></div>
+  <p>Prepara e correggi i sondaggi, poi mandali nella chat aperta.</p>
+  <div class="bubble"><i style="width:80%"></i><i style="width:60%"></i><i style="width:70%"></i><i style="width:45%"></i></div>
+</body>
+</html>

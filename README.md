@@ -15,7 +15,8 @@ Web, e usa la sessione già aperta nel browser: niente server, niente account in
 
 Dal Chrome Web Store, quando sarà pubblicata (per ora in prova, non in elenco). Oppure dal codice:
 
-1. Scarica il repository (`git clone` o "Download ZIP") e scompattalo dove resterà.
+1. Scarica lo zip dell'ultima [release](https://github.com/MatteoGranziera/sondaggi-in-bozza/releases)
+   (o clona il repository) e scompattalo dove resterà.
 2. Apri `chrome://extensions` e attiva **Modalità sviluppatore** in alto a destra.
 3. Premi **Carica estensione non pacchettizzata** e scegli la cartella.
 4. Fissa l'icona nella barra: pezzo di puzzle, poi la puntina accanto a "Sondaggi in bozza".
@@ -25,7 +26,10 @@ Dal Chrome Web Store, quando sarà pubblicata (per ora in prova, non in elenco).
 
 Dopo un aggiornamento dei file, premi il tasto di ricarica dell'estensione in `chrome://extensions` e
 poi ricarica la scheda di WhatsApp Web. Non spostare né rinominare la cartella: per Chrome diventerebbe
-un'altra estensione, senza i sondaggi salvati (usa Esporta prima, se devi).
+un'altra estensione, senza i sondaggi salvati (usa Esporta file prima, se devi).
+
+Tieni attiva una sola copia: se passi a quella dello Store, esporta i sondaggi, disattiva quella caricata
+da cartella e importali nella nuova. Due copie insieme caricherebbero WA-JS due volte in WhatsApp Web.
 
 ## Uso
 

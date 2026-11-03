@@ -81,6 +81,12 @@ try {
     await c.shot(join(OUT, s.file), { x: 0, y: 0, width: 1280, height: 800 });
     console.log(join(OUT, s.file));
   }
+
+  // The small promo tile the store shows in search results and category pages.
+  await c.send('Emulation.setDeviceMetricsOverride', { width: 440, height: 280, deviceScaleFactor: 1, mobile: false });
+  await c.goto(server.url + '/store/promo.html', 300);
+  await c.shot(join(OUT, 'promo-small-440x280.png'), { x: 0, y: 0, width: 440, height: 280 });
+  console.log(join(OUT, 'promo-small-440x280.png'));
   c.close();
 } finally {
   proc.kill();

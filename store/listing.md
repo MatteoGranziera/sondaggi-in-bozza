@@ -4,11 +4,23 @@ Testi pronti da incollare nella dashboard dello sviluppatore. La prima pubblicaz
 **visibilità "Non in elenco"**, così la installa solo chi ha il link. Se la revisione va bene, si può
 passare a "Pubblica" più tardi.
 
+## Prima di cominciare
+
+- **Account:** quello Google personale. L'iscrizione come sviluppatore costa 5 dollari una volta sola.
+- **Trader o non trader:** lo Store chiede a ogni sviluppatore di dichiararlo (regole europee DSA). Per
+  un progetto gratuito e personale, senza attività commerciale, è "non trader". Un trader deve
+  verificare nome, indirizzo e telefono, e il telefono compare sulla scheda.
+- **Due copie insieme no:** prima di installare la versione dello Store, esporta i sondaggi da quella
+  caricata da cartella, disattivala in `chrome://extensions` e importali nella nuova. Due copie attive
+  caricherebbero WA-JS due volte nella stessa pagina di WhatsApp Web.
+
 ## Pacchetto
 
 ```sh
 sh scripts/package.sh     # crea dist/sondaggi-in-bozza-<versione>.zip
 ```
+
+Lo stesso zip è allegato a ogni release su GitHub.
 
 ## Scheda dello Store
 
@@ -17,10 +29,13 @@ sh scripts/package.sh     # crea dist/sondaggi-in-bozza-<versione>.zip
   di WhatsApp Web. Non affiliata a WhatsApp né a Meta.
 - **Categoria:** Produttività > Strumenti
 - **Lingua:** Italiano
-- **Icona:** `icons/128.png`
+- **Icona dello Store (128×128, disegno 96×96 con margine trasparente):** `store/icon-store-128.png`
+- **Tessera promozionale piccola (440×280, obbligatoria):** `store/promo-small-440x280.png`
 - **Screenshot (1280×800):** `store/screenshot-1-bozza.png`, `store/screenshot-2-conferma.png`,
-  `store/screenshot-3-registro.png`, `store/screenshot-4-da-una-chat.png` (si rigenerano con
-  `node store/screenshots.mjs`)
+  `store/screenshot-3-registro.png`, `store/screenshot-4-da-una-chat.png`. Screenshot e tessera si
+  rigenerano con `node store/screenshots.mjs`.
+- **Video YouTube:** la guida della dashboard lo elenca fra i materiali promozionali. Se la dashboard
+  non lascia proseguire senza, basta un video breve caricato come "non in elenco".
 - **Sito web:** https://github.com/MatteoGranziera/sondaggi-in-bozza
 - **Assistenza:** https://github.com/MatteoGranziera/sondaggi-in-bozza/issues
 
