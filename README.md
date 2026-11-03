@@ -1,10 +1,10 @@
 # Sondaggi in bozza
 
 Un'estensione di Chrome per tenere i sondaggi di WhatsApp in bozza: li scrivi con calma, o li prendi da
-una chat dove ci sono già, li modifichi quando vuoi e li mandi quando sono pronti, a una persona o a un
-gruppo alla volta. Per esempio: lo provi con un amico, lo correggi, poi lo mandi al gruppo. Vive nel
-pannello laterale di Chrome, accanto a WhatsApp Web, e usa la sessione già aperta nel browser: niente
-server, niente account in più.
+una chat dove ci sono già, li modifichi quando vuoi e li mandi quando sono pronti nella chat che hai
+aperto in WhatsApp Web. Per esempio: apri la chat con un amico e glielo mandi per un parere, lo
+correggi, poi apri il gruppo e lo mandi lì. Vive nel pannello laterale di Chrome, accanto a WhatsApp
+Web, e usa la sessione già aperta nel browser: niente server, niente account in più.
 
 > Progetto indipendente e open source, **non affiliato a WhatsApp né a Meta**. WhatsApp è un marchio di
 > WhatsApp LLC. L'interfaccia è in italiano.
@@ -36,14 +36,13 @@ un'altra estensione, senza i sondaggi salvati (usa Esporta prima, se devi).
   WhatsApp Web ha già caricato: se il sondaggio è molto indietro, scorri la chat fino a vederlo.
 - La faccina nella domanda e in ogni opzione apre le **emoji**, con la ricerca in italiano. L'emoji va
   dove c'è il cursore; Esc o un clic fuori la chiude.
-- **Destinatario**: un gruppo o una persona per volta. **Gruppi**: le community e i gruppi dove non puoi
-  scrivere non compaiono. **Contatti**: la rubrica e le persone con cui hai una chat, da cercare per
-  nome o numero. Nella stessa ricerca puoi scrivere un numero con il prefisso e sceglierlo con Invio.
-- **Invia** mostra il testo e il destinatario, e manda solo dopo la conferma. Dopo l'invio la scelta si
-  azzera: per mandarlo a qualcun altro lo scegli di nuovo. Se non parte, il destinatario resta e basta
-  premere di nuovo Invia.
+- **Il destinatario è la chat aperta in WhatsApp Web.** Sotto l'anteprima c'è un solo tasto, "Invia a
+  …", con il nome di quella chat: cambia da solo quando apri un'altra chat. Il clic manda il sondaggio
+  lì, e solo lì. Se nel frattempo hai cambiato chat, non parte niente e il tasto si aggiorna.
+- Il tasto resta spento, e spiega perché, se non c'è una chat aperta, se in quella chat non puoi
+  scrivere, o se è una community o un canale.
 - Il sondaggio resta sempre **modificabile**. Su WhatsApp quello già inviato non cambia: le modifiche
-  valgono per i prossimi invii. Chi l'ha già ricevuto è segnato, anche nella conferma.
+  valgono per i prossimi invii. Se la chat aperta l'ha già ricevuto, sopra il tasto c'è scritto quando.
 - In fondo c'è il **registro degli invii**: chi, quando, com'è andata, e se è partita una versione
   precedente del testo.
 - **Duplica** fa una copia senza registro. **Esporta file** e **Importa file** salvano e ripristinano
@@ -54,9 +53,10 @@ un'altra estensione, senza i sondaggi salvati (usa Esporta prima, se devi).
 Sondaggi in bozza serve a gestire le bozze, non a fare invii di massa: si manda a gruppi e persone che
 ti conoscono e se lo aspettano. Per questo:
 
-- ogni invio va a **un solo destinatario** e va confermato vedendo testo e destinatario;
-- dopo ogni invio il destinatario va scelto di nuovo;
-- un numero scritto a mano viene segnalato nella conferma, perché lo riceve anche chi non ti conosce.
+- ogni invio va **solo nella chat aperta**, una chat alla volta, e con un clic su un tasto che ne
+  mostra il nome, sotto l'anteprima di quello che parte;
+- non ci sono elenchi di destinatari, invii in serie o programmati;
+- l'estensione non legge la rubrica: conosce solo la chat che hai aperto.
 
 Non è uno strumento ufficiale: WhatsApp può limitare o bloccare gli account che mandano messaggi non
 richiesti, e quando aggiorna il sito l'estensione può smettere di funzionare finché WA-JS non si
@@ -64,8 +64,8 @@ aggiorna. Usala con misura.
 
 ## Privacy
 
-Niente server e niente statistiche: sondaggi, contatti e registro restano nel browser, e i sondaggi
-escono solo attraverso WhatsApp Web verso i destinatari che confermi. Il tracciamento con Google
+Niente server e niente statistiche: sondaggi e registro restano nel browser, e i sondaggi escono solo
+attraverso WhatsApp Web, nella chat aperta, quando premi il tasto. Il tracciamento con Google
 Analytics e le anteprime dei link via server esterni, che WA-JS avrebbe di base, sono spenti. Dettagli
 in [PRIVACY.md](PRIVACY.md).
 
@@ -91,12 +91,12 @@ dell'estensione vera.
 
 ## Com'è fatta
 
-- `panel.html`, `panel.css`, `panel.js`: il pannello laterale, con sondaggi, editor, destinatari,
-  anteprima, invio e registro. Salva in `chrome.storage.local`.
+- `panel.html`, `panel.css`, `panel.js`: il pannello laterale, con sondaggi, editor, anteprima, invio e
+  registro. Salva in `chrome.storage.local`.
 - `emoji.js`: prepara il selettore delle emoji in italiano.
 - `content/config.js`: configura WA-JS prima che parta (statistiche spente).
-- `content/main.js`: gira dentro WhatsApp Web insieme a WA-JS e risponde a cinque comandi: stato,
-  gruppi, contatti, sondaggi della chat aperta, invio di un sondaggio.
+- `content/main.js`: gira dentro WhatsApp Web insieme a WA-JS e risponde a quattro comandi: stato,
+  chat aperta, sondaggi della chat aperta, invio di un sondaggio nella chat aperta.
 - `content/bridge.js`: fa da ponte fra il pannello e `main.js`, che non possono parlarsi direttamente.
 - `vendor/wa-js/`: [WA-JS](https://github.com/wppconnect-team/wa-js) di WPPConnect (Apache-2.0),
   versione in `VERSION`.

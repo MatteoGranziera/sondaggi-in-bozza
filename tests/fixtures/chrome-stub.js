@@ -3,21 +3,12 @@
 window.chrome = (() => {
   let store = {};
   try { const seed = sessionStorage.getItem('seed'); if (seed) store = JSON.parse(seed); } catch {}
-  const groups = [
-    { id: '120363000001@g.us', name: 'Famiglia' },
-    { id: '120363000002@g.us', name: 'Calcetto del giovedì' },
-    { id: '120363000003@g.us', name: 'Capodanno 2027' },
-  ];
-  const contacts = [
-    { id: '393331112222@c.us', name: 'Mario Rossi', phone: '393331112222' },
-    { id: '393337654321@c.us', name: 'Giulia Bianchi', phone: '393337654321' },
-    { id: '99887766@lid', name: 'Zoë', phone: '' },
-  ];
   const mock = {
     state: { ready: true, authenticated: true, mainReady: true, me: '393330000000:5@c.us' },
+    // The chat open in WhatsApp Web, as content/main.js describes it.
+    active: { id: '120363000001@g.us', name: 'Famiglia', isGroup: true, reason: '' },
     sent: [],
-    failFor: new Set(['120363000002@g.us']),
-    contactsError: '',
+    failFor: new Set(),
     chatPolls: {
       chat: 'Famiglia',
       polls: [
@@ -28,6 +19,11 @@ window.chrome = (() => {
     chatPollsError: '',
     listeners: [],
     store: () => store,
+    // Like clicking another chat in WhatsApp Web: the page announces it.
+    open(chat) {
+      mock.active = chat;
+      for (const fn of mock.listeners) fn({ type: 'wa-state' });
+    },
   };
   window.__mock = mock;
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -41,13 +37,14 @@ window.chrome = (() => {
       sendMessage: async (_id, msg) => {
         await wait(100);
         if (msg.cmd === 'state') return { ok: true, result: mock.state };
-        if (msg.cmd === 'groups') return { ok: true, result: groups };
-        if (msg.cmd === 'contacts') return mock.contactsError ? { ok: false, error: mock.contactsError } : { ok: true, result: contacts };
-        if (msg.cmd === 'chatPolls') return mock.chatPollsError ? { ok: false, error: mock.chatPollsError } : { ok: true, result: mock.chatPolls };
+        if (msg.cmd === 'activeChat') return { ok: true, result: mock.active };
+        if (msg.cmd === 'chatPolls') return mock.chatPollsError ? { ok: false, error: mock.chatPollsError } : { ok: true, result: { ...mock.chatPolls, chatId: mock.active?.id || '' } };
         if (msg.cmd === 'sendPoll') {
+          const a = mock.active;
+          if (!a || a.id !== msg.args.chatId || a.reason) return { ok: true, result: { sent: false, active: a } };
           mock.sent.push(msg.args);
           if (mock.failFor.has(msg.args.chatId)) return { ok: false, error: 'Non puoi scrivere in questo gruppo.' };
-          return { ok: true, result: { id: 'true_' + msg.args.chatId + '_ABC' } };
+          return { ok: true, result: { sent: true, id: 'true_' + msg.args.chatId + '_ABC' } };
         }
         return { ok: false, error: 'unknown command' };
       },

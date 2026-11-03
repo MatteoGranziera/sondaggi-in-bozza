@@ -38,18 +38,18 @@ try {
   }
   check('WA-JS ready on WhatsApp Web', ready);
   check('WA-JS analytics disabled', await wa.ev(`WPP.config.disableGoogleAnalytics === true`));
-  check('WA-JS has every function the extension calls', await wa.ev(`['getActiveChat', 'getMessages', 'list', 'sendCreatePollMessage'].every((f) => typeof WPP.chat[f] === 'function')
-    && typeof WPP.contact.list === 'function' && typeof WPP.conn.isMainReady === 'function'`));
+  check('WA-JS has every function the extension calls', await wa.ev(`['getActiveChat', 'getMessages', 'sendCreatePollMessage'].every((f) => typeof WPP.chat[f] === 'function')
+    && typeof WPP.conn.isMainReady === 'function' && typeof WPP.on === 'function'`));
 
   // The readers in main.js, run on real WhatsApp Web models built here.
   const src = readFileSync(join(ROOT, 'content/main.js'), 'utf8');
-  const readers = ['const safe = [^\\n]+\\n', 'function person\\([\\s\\S]*?\\n  }\\n', 'function pollFrom\\([\\s\\S]*?\\n  }\\n']
+  const readers = ['const safe = [^\\n]+\\n', 'const text = [^\\n]+\\n', 'function chatInfo\\([\\s\\S]*?\\n  }\\n', 'function pollFrom\\([\\s\\S]*?\\n  }\\n']
     .map((re) => src.match(new RegExp(re))[0]).join('\n');
   const read = JSON.parse(await wa.ev(`(() => {
     ${readers}
     const W = WPP.whatsapp;
     const wid = (s) => (W.WidFactory?.createWid || WPP.util.createWid)(s);
-    const contact = new W.ContactModel({ id: wid('393331112222@c.us'), name: 'Mario Rossi' });
+    const chat = (attrs) => { try { return chatInfo(new W.ChatModel(attrs)); } catch (e) { return { error: e.message }; } };
     // getMessages hands back serialized messages; this is their shape for a poll.
     const raw = { id: { fromMe: false, remote: '120363000001@g.us', id: 'TESTPOLL', _serialized: 'false_120363000001@g.us_TESTPOLL' },
       type: 'poll_creation', pollName: 'Cena?', t: 1700000000, notifyName: 'Mario',
@@ -58,14 +58,24 @@ try {
     let fromModel = null, modelError = '';
     try { fromModel = pollFrom(new W.MsgModel(raw)); } catch (e) { modelError = e.message; }
     return JSON.stringify({
-      isGroupIsAFunction: typeof contact.isGroup === 'function',
-      person: person(contact, contact),
+      group: chat({ id: wid('120363000001@g.us'), name: 'Famiglia' }),
+      user: chat({ id: wid('393331112222@c.us'), name: 'Mario Rossi' }),
+      readOnly: chat({ id: wid('393337654321@c.us'), name: 'Giulia', isReadOnly: true }),
+      channel: chat({ id: wid('120363000005@newsletter'), name: 'Canale' }),
+      none: chatInfo(null),
       fromModel, modelError,
       fromRaw: pollFrom(raw),
       notAPoll: pollFrom({ ...raw, type: 'chat', body: 'ciao' }),
     });
   })()`));
-  check('contact read despite isGroup being a function', read.isGroupIsAFunction && read.person?.name === 'Mario Rossi' && read.person?.id === '393331112222@c.us', JSON.stringify(read.person));
+  // A group model needs a logged-in account (WhatsApp asks for the user's LID).
+  if (read.group?.error) console.log(`skip a group chat can take a poll (logged out: ${read.group.error})`);
+  else check('a group chat can take a poll', read.group?.id === '120363000001@g.us' && read.group.isGroup === true && read.group.reason === '', JSON.stringify(read.group));
+  // The name is the chat's title as WhatsApp shows it: the formatted number for someone not saved.
+  check('a person chat can take a poll', read.user?.id === '393331112222@c.us' && read.user.name.replace(/\D/g, '') === '393331112222' && read.user.isGroup === false && read.user.reason === '', JSON.stringify(read.user));
+  check('a read-only chat is refused', read.readOnly?.reason === 'In questa chat non puoi scrivere.', JSON.stringify(read.readOnly));
+  check('a channel is refused', !!read.channel?.reason, JSON.stringify(read.channel));
+  check('no chat reads as none', read.none === null);
   const expected = { question: 'Cena?', options: ['Pizza', 'Sushi'], multiple: false, at: 1700000000000, fromMe: false, author: 'Mario' };
   const same = (p) => p && Object.entries(expected).every(([k, v]) => JSON.stringify(p[k]) === JSON.stringify(v));
   check('poll read from a raw message', same(read.fromRaw), JSON.stringify(read.fromRaw));

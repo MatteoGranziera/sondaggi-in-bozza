@@ -13,6 +13,11 @@ const server = await serve(ROOT);
 const proc = await launch({ bin: chromeBin(), port });
 const PANEL = server.url + '/panel.html';
 
+const MARIO = { id: '393331112222@c.us', name: 'Mario Rossi', isGroup: false, reason: '' };
+const FAMIGLIA = { id: '120363000001@g.us', name: 'Famiglia', isGroup: true, reason: '' };
+const CALCETTO = { id: '120363000002@g.us', name: 'Calcetto del giovedì', isGroup: true, reason: '' };
+const ANNUNCI = { id: '120363000004@g.us', name: 'Annunci', isGroup: true, reason: 'In questa chat non puoi scrivere.' };
+
 const helpers = `
   window.T = {
     q: (s) => document.querySelector(s),
@@ -20,31 +25,24 @@ const helpers = `
     byText: (sel, t) => [...document.querySelectorAll(sel)].find((e) => e.textContent.trim() === t),
     set: (el, v) => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); },
     enter: (el) => el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })),
-    item: (name) => [...document.querySelectorAll('#pickList label')].find((l) => l.querySelector('.iname span').textContent === name),
-    pickItem: (name) => T.item(name).querySelector('input').click(),
-    names: () => [...document.querySelectorAll('#pickList .iname > span')].map((s) => s.textContent).join('|'),
-    chips: () => [...document.querySelectorAll('#chips .chip > span')].map((s) => s.textContent).join('|'),
     pick: () => document.querySelector('emoji-picker').shadowRoot,
+    send: () => document.querySelector('#btnSend'),
     sendText: () => document.querySelector('#sendBox').innerText,
-    sendButton: () => document.querySelector('#sendBox > button'),
+    log: () => document.querySelector('#logCard').innerText,
+    toast: () => document.querySelector('#toast').textContent,
   }; true`;
 
-async function waitFor(c, expr, ms = 10000) {
-  for (let t = 0; t < ms; t += 200) {
+async function waitFor(c, expr, ms = 5000) {
+  for (let t = 0; t < ms; t += 100) {
     if (await c.ev(expr).catch(() => false)) return true;
-    await sleep(200);
+    await sleep(100);
   }
   return false;
 }
 
 const shot = async (c, name) => { if (SHOTS) await c.shot(join(SHOTS, name)); };
-
-async function sendNow(c) {
-  await c.ev(`T.sendButton().click(); true`);
-  await c.ev(`T.byText('button', 'Sì, invia').click(); true`);
-  await waitFor(c, `!T.sendText().includes('Invio in corso')`, 5000);
-  await sleep(200);
-}
+const openChat = (c, chat) => c.ev(`__mock.open(${JSON.stringify(chat)}); true`);
+const sendLabel = (c) => c.ev(`T.send().textContent`);
 
 try {
   const tab = await newTab(port);
@@ -57,10 +55,10 @@ try {
 
   // First run: the notice comes before anything else.
   const notice = await c.ev(`T.q('.notice')?.innerText || ''`);
-  check('notice shown on first run', notice.includes('non è di WhatsApp né di Meta') && notice.includes('una persona o un gruppo alla volta'), notice);
+  check('notice shown on first run', notice.includes('non è di WhatsApp né di Meta') && notice.includes('solo verso la chat aperta in WhatsApp Web'), notice);
   await shot(c, 'notice.png');
   await c.ev(`T.byText('button', 'Ho capito').click(); true`);
-  check('notice remembered', (await c.ev(`__mock.store().noticeAck`)) === 2);
+  check('notice remembered', (await c.ev(`__mock.store().noticeAck`)) === 3);
   check('list after notice', (await c.ev(`T.q('#view').innerText`)).includes('Ancora nessun sondaggio'));
   check('footer links privacy and source', await c.ev(`T.qa('.foot a').map((a) => a.href).join(' ').includes('/blob/main/PRIVACY.md')`));
   check('status online', (await c.ev(`T.q('#pill').textContent`)).startsWith('Collegato come +393330000000'));
@@ -69,12 +67,13 @@ try {
   await c.ev(`T.byText('button', 'Nuovo').click(); true`);
   await sleep(200);
   check('new draft focuses the question', await c.ev(`document.activeElement === T.q('#q')`));
+  check('an empty draft cannot be sent', await c.ev(`T.send().disabled && T.sendText().includes('Scrivi la domanda')`));
   await c.ev(`T.set(T.q('#q'), 'Cena venerdì?');
     T.set(T.q('#opts input[data-i="0"]'), 'Pizzeria');
     T.set(T.q('#opts input[data-i="1"]'), 'Sushi'); true`);
   await c.ev(`T.byText('button', '+ Aggiungi opzione').click(); true`);
   await c.ev(`T.set(T.q('#opts input[data-i="2"]'), 'pizzeria'); true`);
-  check('duplicate options flagged', (await c.ev(`T.sendText()`)).includes('Due opzioni sono uguali'));
+  check('duplicate options flagged', (await c.ev(`T.sendText()`)).includes('Due opzioni sono uguali') && (await c.ev(`T.send().disabled`)));
   await c.ev(`T.set(T.q('#opts input[data-i="2"]'), 'Trattoria'); true`);
   await c.ev(`T.enter(T.q('#opts input[data-i="2"]')); true`);
   check('enter adds an option', (await c.ev(`T.qa('#opts .opt').length`)) === 4);
@@ -100,94 +99,87 @@ try {
   await c.ev(`T.q('#view h2').click(); true`);
   check('outside click closes the picker', await c.ev(`!T.q('.emoji-pop')`));
 
-  // One recipient: picking another replaces it, across groups, contacts and typed numbers.
-  check('groups listed', await waitFor(c, `T.names() === 'Calcetto del giovedì|Capodanno 2027|Famiglia'`));
-  check('nothing to send without a recipient', await c.ev(`T.sendButton().disabled && T.sendText().includes('Nessun destinatario scelto')`));
-  await c.ev(`T.pickItem('Famiglia'); true`);
-  check('a group becomes the recipient', (await c.ev(`T.chips()`)) === 'Famiglia');
-  await c.ev(`T.pickItem('Calcetto del giovedì'); true`);
-  check('picking another replaces it', (await c.ev(`T.chips()`)) === 'Calcetto del giovedì' && (await c.ev(`T.qa('#pickList input:checked').length`)) === 1);
-  await c.ev(`T.byText('.tab', 'Contatti').click(); true`);
-  check('contacts listed', await waitFor(c, `T.names() === 'Giulia Bianchi|Mario Rossi|Zoë'`));
-  await c.ev(`T.set(T.q('#picker input[type=search]'), 'zoe'); true`);
-  check('search ignores accents', (await c.ev(`T.names()`)) === 'Zoë');
-  await c.ev(`T.set(T.q('#picker input[type=search]'), '765'); true`);
-  check('search by number', (await c.ev(`T.names()`)) === 'Giulia Bianchi');
-  await c.ev(`T.set(T.q('#picker input[type=search]'), '393331112222'); true`);
-  check('a known number shows the contact only', (await c.ev(`T.names()`)) === 'Mario Rossi' && (await c.ev(`!T.q('.addnum')`)));
-  await c.ev(`T.pickItem('Mario Rossi'); true`);
-  check('a contact replaces the group', (await c.ev(`T.chips()`)) === 'Mario Rossi');
-  await c.ev(`T.set(T.q('#picker input[type=search]'), '+39 345 000 1111'); true`);
-  check('a new number is offered', (await c.ev(`T.q('.addnum')?.textContent`)) === '+ Usa il numero +393450001111');
-  await c.ev(`T.enter(T.q('#picker input[type=search]')); true`);
-  check('a typed number replaces the contact', (await c.ev(`T.chips()`)) === '+393450001111' && (await c.ev(`T.q('#picker input[type=search]').value`)) === '');
+  // The recipient is the chat open in WhatsApp Web, named on the button under the preview.
+  check('button names the open chat', (await sendLabel(c)) === 'Invia a Famiglia' && !(await c.ev(`T.send().disabled`)));
+  check('button sits under the preview', await c.ev(`T.q('#preview').nextElementSibling === T.q('#sendBox')`));
+  check('hint says it is a group', (await c.ev(`T.sendText()`)).includes('Gruppo aperto in WhatsApp Web.'));
+  await openChat(c, MARIO);
+  check('button follows the open chat', await waitFor(c, `T.send().textContent === 'Invia a Mario Rossi'`));
+  check('hint says it is a chat', (await c.ev(`T.sendText()`)).includes('Chat aperta in WhatsApp Web.'));
+  check('nothing sent by switching chats', (await c.ev(`__mock.sent.length`)) === 0);
   await shot(c, 'editor.png');
 
-  // Confirmation names the content and the recipient; a typed number is called out.
-  await c.ev(`T.sendButton().click(); true`);
-  const confirmText = await c.ev(`T.sendText()`);
-  check('confirm shows question and recipient', confirmText.includes('«Cena🍕🍕 venerdì?» (3 opzioni, una risposta) a +393450001111 (numero scritto a mano).'), confirmText);
-  check('confirm warns about a typed number', confirmText.includes('anche se non ti conosce'));
-  await shot(c, 'confirm.png');
-  await c.ev(`T.byText('button', 'Sì, invia').click(); true`);
-  await waitFor(c, `!T.sendText().includes('Invio in corso')`, 5000);
+  // One click sends, to that chat.
+  await c.ev(`T.send().click(); true`);
+  check('sending shows progress', await c.ev(`T.send().textContent === 'Invio in corso…' && T.send().disabled`));
+  await waitFor(c, `T.send().textContent !== 'Invio in corso…'`);
   const sent = JSON.parse(await c.ev(`JSON.stringify(__mock.sent)`));
-  check('one poll sent', sent.length === 1);
-  check('payload', sent[0].chatId === '393450001111@c.us' && sent[0].name === 'Cena🍕🍕 venerdì?' && sent[0].choices.join() === 'Pizzeria,Sushi,Trattoria' && sent[0].selectableCount === 1, JSON.stringify(sent[0]));
-  check('recipient cleared after sending', (await c.ev(`T.chips()`)) === '' && (await c.ev(`T.sendButton().disabled`)));
+  check('one poll sent to the open chat', sent.length === 1 && sent[0].chatId === MARIO.id, JSON.stringify(sent));
+  check('payload', sent[0].name === 'Cena🍕🍕 venerdì?' && sent[0].choices.join() === 'Pizzeria,Sushi,Trattoria' && sent[0].selectableCount === 1, JSON.stringify(sent[0]));
+  check('toast names the chat', (await c.ev(`T.toast()`)) === 'Inviato a Mario Rossi.');
   check('poll stays editable', await c.ev(`!T.q('#q').disabled`));
   check('notice about editing after sending', (await c.ev(`T.q('.infobar')?.textContent || ''`)).includes('valgono per i prossimi invii'));
+  check('same chat is told it already has it', (await c.ev(`T.sendText()`)).includes("«Mario Rossi» l'ha già ricevuto oggi alle"));
 
-  // A failed send keeps the recipient, so pressing Invia again retries.
-  await c.ev(`T.byText('.tab', 'Gruppi').click(); true`);
-  await sleep(200);
-  await c.ev(`T.pickItem('Calcetto del giovedì'); true`);
-  await sendNow(c);
-  check('failed recipient stays chosen', (await c.ev(`T.chips()`)) === 'Calcetto del giovedì' && (await c.ev(`T.sendButton().textContent`)) === 'Invia a Calcetto del giovedì');
-  await c.ev(`__mock.failFor.clear(); true`);
-  await sendNow(c);
-  check('retry succeeds and clears', (await c.ev(`__mock.sent.length`)) === 3 && (await c.ev(`T.chips()`)) === '');
+  // The chat changes between what the panel shows and the click: nothing goes out.
+  await c.ev(`__mock.active = ${JSON.stringify(FAMIGLIA)}; true`);
+  await c.ev(`T.send().click(); true`);
+  check('changed chat is caught at send time', await waitFor(c, `T.send().textContent === 'Invia a Famiglia'`) && (await c.ev(`__mock.sent.length`)) === 1);
+  check('and explained', (await c.ev(`T.toast()`)).includes('La chat aperta è cambiata: ora è «Famiglia». Non ho mandato niente.'));
+  check('a refused send is not logged', (await c.ev(`T.log()`)).includes('1 riuscito') && !(await c.ev(`T.log()`)).includes('non riuscito'));
 
-  // The log, the previous version, and a repeat recipient.
-  const logText = await c.ev(`T.q('#logCard').innerText`);
-  check('send log at the bottom', await c.ev(`T.q('#view > div').lastElementChild.id === 'logCard'`) && logText.includes('2 riusciti · 1 non riuscito') && logText.includes('Non puoi scrivere in questo gruppo.'), logText);
+  // Chats that take no poll.
+  await openChat(c, ANNUNCI);
+  check('read-only chat disables the button', await waitFor(c, `T.send().disabled && T.send().textContent === 'Invia a Annunci'`) && (await c.ev(`T.sendText()`)).includes('In questa chat non puoi scrivere.'));
+  await openChat(c, null);
+  check('no open chat disables the button', await waitFor(c, `T.send().disabled && T.send().textContent === 'Invia'`) && (await c.ev(`T.sendText()`)).includes('Apri in WhatsApp Web la chat dove vuoi mandarlo'));
+  await c.ev(`__mock.state = { ready: true, authenticated: false }; true`);
+  await openChat(c, FAMIGLIA);
+  check('logged out disables the button', await waitFor(c, `T.send().disabled && T.sendText().includes('WhatsApp non è collegato.')`));
+  await c.ev(`__mock.state = { ready: true, authenticated: true, mainReady: true, me: '393330000000:5@c.us' }; true`);
+
+  // A failed send is logged and can be retried.
+  await c.ev(`__mock.failFor.add('${CALCETTO.id}'); true`);
+  await openChat(c, CALCETTO);
+  await waitFor(c, `T.send().textContent === 'Invia a Calcetto del giovedì' && !T.send().disabled`);
+  await c.ev(`T.send().click(); true`);
+  check('failure logged with the reason', await waitFor(c, `T.log().includes('Non puoi scrivere in questo gruppo.')`) && (await c.ev(`T.toast()`)).startsWith('Non è partito'));
+  await c.ev(`__mock.failFor.clear(); T.send().click(); true`);
+  check('retry succeeds', await waitFor(c, `T.log().includes('2 riusciti · 1 non riuscito')`), await c.ev(`T.log()`));
+  check('send log at the bottom', await c.ev(`T.q('#view > div').lastElementChild.id === 'logCard'`));
+
+  // Editing after sending: older sends keep their text in the log.
   await c.ev(`T.set(T.q('#q'), 'Cena sabato?'); true`);
-  check('older sends marked as previous version', (await c.ev(`T.q('#logCard').innerText`)).includes('Versione precedente: «Cena🍕🍕 venerdì?»'));
-  await c.ev(`T.pickItem('Calcetto del giovedì'); true`);
-  check('chip says already sent', (await c.ev(`T.q('#chips').innerText`)).includes('già inviato'));
-  check('list marks who already has it', (await c.ev(`T.item('Calcetto del giovedì').innerText`)).includes('inviato'));
-  await c.ev(`T.sendButton().click(); true`);
-  check('confirm warns about a repeat', (await c.ev(`T.sendText()`)).includes("L'ha già ricevuto: gli arriverà di nuovo."));
-  await c.ev(`T.byText('button', 'Sì, invia').click(); true`);
-  await waitFor(c, `!T.sendText().includes('Invio in corso')`, 5000);
-  check('resend uses the new text', (await c.ev(`__mock.sent.length`)) === 4 && (await c.ev(`__mock.sent[3].name`)) === 'Cena sabato?');
+  check('older sends marked as previous version', (await c.ev(`T.log()`)).includes('Versione precedente: «Cena🍕🍕 venerdì?»'));
+  await openChat(c, MARIO);
+  await waitFor(c, `T.send().textContent === 'Invia a Mario Rossi'`);
+  await c.ev(`T.send().click(); true`);
+  check('resend uses the new text', await waitFor(c, `__mock.sent.length === 4`) && (await c.ev(`__mock.sent[3].name`)) === 'Cena sabato?');
   await shot(c, 'sent.png');
-
-  // Contacts failing to load: the error shows, typing a number still works.
-  await c.ev(`__mock.contactsError = 'ContactStore non disponibile'; T.byText('.tab', 'Contatti').click(); true`);
-  await c.ev(`T.byText('#picker button', 'Aggiorna').click(); true`);
-  check('contact error shown with a way out', await waitFor(c, `T.q('#pickList').innerText.includes('ContactStore non disponibile. Puoi comunque scrivere un numero')`, 3000));
-  await c.ev(`T.set(T.q('#picker input[type=search]'), '00393401234567'); true`);
-  check('number offered despite the error', !!(await c.ev(`T.q('.addnum')`)));
 
   await c.ev(`T.byText('button', '‹ Sondaggi').click(); true`);
   await sleep(200);
-  check('list summary', (await c.ev(`T.q('.draft .dm').textContent`)) === '3 opzioni · inviato a 2', await c.ev(`T.q('.draft .dm').textContent`));
+  check('list summary', (await c.ev(`T.q('.draft .dm').textContent`)) === '3 opzioni · inviato in 2 chat', await c.ev(`T.q('.draft .dm').textContent`));
 
   // A poll already in the open chat becomes a new draft.
+  await openChat(c, FAMIGLIA);
   await c.ev(`T.byText('button', 'Da una chat').click(); true`);
   check('chat polls listed', await waitFor(c, `T.qa('.chat-polls li').length === 2`, 3000));
   const cp = await c.ev(`T.q('#chatPolls').innerText`);
   check('chat polls show chat, author and type', cp.includes('Chat «Famiglia»') && cp.includes('di Mamma') && cp.includes('più risposte') && cp.includes('tuo'), cp);
-  check('a poll that is not a draft is not marked', !(await c.ev(`T.q('#chatPolls').innerText`)).includes('già fra le bozze'));
+  check('a poll that is not a draft is not marked', !cp.includes('già fra le bozze'));
   await shot(c, 'import.png');
+  await c.ev(`__mock.chatPolls = { chat: 'Calcetto del giovedì', polls: [{ id: 'p9', question: 'Campo coperto?', options: ['Sì', 'No'], multiple: false, at: Date.now(), fromMe: false, author: 'Luca' }] }; true`);
+  await openChat(c, CALCETTO);
+  check('switching chat reloads its polls', await waitFor(c, `T.q('#chatPolls').innerText.includes('Chat «Calcetto del giovedì»') && T.qa('.chat-polls li').length === 1`, 3000));
   await c.ev(`T.qa('.chat-polls li')[0].querySelector('button').click(); true`);
   await sleep(300);
-  check('imported poll opens as a draft', (await c.ev(`T.q('#q').value`)) === 'Pranzo di domenica: chi porta cosa?'
-    && (await c.ev(`T.qa('#opts input').map((i) => i.value).join(',')`)) === 'Dolce,Vino,Pane'
-    && (await c.ev(`T.qa('input[name=multi]')[1].checked`)));
-  check('imported draft says where it came from', (await c.ev(`T.q('#view').innerText`)).includes('Preso dalla chat «Famiglia»'));
-  check('imported draft has no recipient or log', (await c.ev(`T.chips()`)) === '' && (await c.ev(`T.q('#logCard').hidden`)));
+  check('imported poll opens as a draft', (await c.ev(`T.q('#q').value`)) === 'Campo coperto?'
+    && (await c.ev(`T.qa('#opts input').map((i) => i.value).join(',')`)) === 'Sì,No'
+    && (await c.ev(`T.qa('input[name=multi]')[0].checked`)));
+  check('imported draft says where it came from', (await c.ev(`T.q('#view').innerText`)).includes('Preso dalla chat «Calcetto del giovedì»'));
+  check('imported draft starts with no log', await c.ev(`T.q('#logCard').hidden`));
+  check('imported draft is ready for the open chat', (await sendLabel(c)) === 'Invia a Calcetto del giovedì');
   await c.ev(`T.byText('button', '‹ Sondaggi').click(); T.byText('button', 'Da una chat').click(); true`);
   check('imported poll now marked as known', await waitFor(c, `(T.qa('.chat-polls li')[0]?.innerText || '').includes('già fra le bozze')`, 3000));
   await c.ev(`__mock.chatPollsError = 'Apri in WhatsApp Web la chat con il sondaggio, poi premi Aggiorna.'; T.byText('button', 'Aggiorna').click(); true`);
@@ -204,20 +196,17 @@ try {
   const errors = c.logs.filter((l) => !l.includes('ETag'));
   check('no page errors', errors.length === 0, errors.join(' ; '));
 
-  // Older drafts: 0.1 kept served recipients in a list, 0.2 kept only pending ones.
-  await c.ev(`sessionStorage.setItem('seed', JSON.stringify({ noticeAck: 1, view: 'list', drafts: [
-    { id: 'v1', question: 'Vecchio', options: ['A', 'B'], multiple: false, createdAt: 1, updatedAt: 3,
-      recipients: [{ jid: '120363000001@g.us', label: 'Famiglia' }, { jid: '120363000003@g.us', label: 'Capodanno 2027' }],
+  // Drafts from 0.4 stored a chosen recipient: it is dropped, the rest stays.
+  await c.ev(`sessionStorage.setItem('seed', JSON.stringify({ noticeAck: 2, view: 'list', drafts: [
+    { v: 3, id: 'v3', question: 'Vecchio', options: ['A', 'B'], multiple: false, createdAt: 1, updatedAt: 2,
+      recipient: { jid: '120363000001@g.us', label: 'Famiglia', source: 'group' },
       sends: [{ jid: '120363000001@g.us', label: 'Famiglia', ok: true, info: 'x', at: Date.now() - 86400000 }] },
-    { v: 2, id: 'v2', question: 'Medio', options: ['A', 'B'], multiple: false, createdAt: 1, updatedAt: 2,
-      recipients: [{ jid: '393331112222@c.us', label: 'Mario Rossi', source: 'contact' }, { jid: '120363000003@g.us', label: 'Capodanno 2027', source: 'group' }], sends: [] },
   ] })); true`);
   await c.goto(PANEL);
   await c.ev(helpers);
   check('changed notice shown again to earlier users', await c.ev(`!!T.q('.notice')`));
   await c.ev(`T.byText('button', 'Ho capito').click(); true`);
-  const meta = await c.ev(`T.qa('.draft .dm').map((m) => m.textContent).join(' / ')`);
-  check('old drafts keep their first pending recipient', meta === '2 opzioni · inviato a 1 · pronto per Capodanno 2027 / 2 opzioni · mai inviato · pronto per Mario Rossi', meta);
+  check('old draft loads without its recipient', (await c.ev(`T.q('.draft .dm').textContent`)) === '2 opzioni · inviato in 1 chat');
   c.close();
 } finally {
   proc.kill();

@@ -12,9 +12,8 @@ const DAY = 86400000;
 const now = Date.now();
 
 const draft = {
-  v: 3, id: 'demo', question: 'Cena di classe: quale sera vi va meglio?',
+  v: 4, id: 'demo', question: 'Cena di classe: quale sera vi va meglio?',
   options: ['Venerdì 14 🍕', 'Sabato 15 🍷', 'Domenica 16 ☀️'], multiple: true,
-  recipient: { jid: '120363000001@g.us', label: 'Famiglia', source: 'group' },
   sends: [
     { jid: '120363000009@g.us', label: 'Classe 3B', ok: true, info: '', at: now - DAY, question: 'Cena di classe: quale sera vi va meglio?', choices: ['Venerdì 14 🍕', 'Sabato 15 🍷', 'Domenica 16 ☀️'], multiple: true },
     { jid: '393337654321@c.us', label: 'Giulia Bianchi', ok: true, info: '', at: now - DAY + 4000, question: 'Cena di classe: quale sera vi va meglio?', choices: ['Venerdì 14 🍕', 'Sabato 15 🍷', 'Domenica 16 ☀️'], multiple: true },
@@ -32,9 +31,9 @@ const shots = [
   },
   {
     file: 'screenshot-2-conferma.png',
-    title: 'Un destinatario alla volta, con conferma',
-    points: ['Un gruppo o una persona, cercati per nome o numero', 'Prima di inviare rivedi testo e destinatario', 'Prova con un amico, poi mandalo al gruppo'],
-    confirm: true,
+    title: 'Mandalo nella chat aperta',
+    points: ['Apri la chat in WhatsApp Web: il tasto prende il suo nome', 'Anteprima e destinatario davanti agli occhi, poi un clic', 'Prova con un amico, poi apri il gruppo e mandalo lì'],
+    preview: true,
   },
   {
     file: 'screenshot-3-registro.png',
@@ -60,7 +59,7 @@ try {
   await c.goto(server.url + '/store/showcase.html', 200);
   for (const s of shots) {
     await c.ev(`(() => {
-      sessionStorage.setItem('seed', ${JSON.stringify(JSON.stringify({ noticeAck: 2, view: 'edit', currentId: 'demo', drafts: [draft] }))});
+      sessionStorage.setItem('seed', ${JSON.stringify(JSON.stringify({ noticeAck: 3, view: 'edit', currentId: 'demo', drafts: [draft] }))});
       document.getElementById('title').textContent = ${JSON.stringify(s.title)};
       document.getElementById('points').replaceChildren(...${JSON.stringify(s.points)}.map((p) => Object.assign(document.createElement('li'), { textContent: p })));
       document.getElementById('panel').src = '/panel.html?' + Date.now();
@@ -68,10 +67,8 @@ try {
     await sleep(2500);
     const frame = `document.getElementById('panel').contentWindow`;
     await c.ev(`${frame}.document.documentElement.style.scrollbarWidth = 'none'; true`);
-    if (s.confirm) {
-      await c.ev(`(() => { const d = ${frame}.document; [...d.querySelectorAll('#sendBox button')].find((b) => b.textContent.startsWith('Invia')).click(); })(); true`);
-      await sleep(300);
-      await c.ev(`(() => { const d = ${frame}.document; const card = d.querySelector('#sendBox').closest('.card'); ${frame}.scrollTo(0, card.offsetTop - 300); })(); true`);
+    if (s.preview) {
+      await c.ev(`(() => { const d = ${frame}.document; const card = d.querySelector('#preview').closest('.card'); ${frame}.scrollTo(0, card.offsetTop - 260); })(); true`);
     }
     if (s.bottom) await c.ev(`${frame}.scrollTo(0, ${frame}.document.body.scrollHeight); true`);
     if (s.fromChat) {

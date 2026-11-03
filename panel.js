@@ -3,11 +3,9 @@
 const MAX_OPTIONS = 12;
 const WA_URL = 'https://web.whatsapp.com/';
 const SLOW_LOAD_MS = 60000;
-const LIST_LIMIT = 200;
-const DRAFT_VERSION = 3;
-const NOTICE_VERSION = 2;
+const DRAFT_VERSION = 4;
+const NOTICE_VERSION = 3;
 const REPO_URL = 'https://github.com/MatteoGranziera/sondaggi-in-bozza';
-const SOURCES = ['group', 'contact', 'number'];
 
 const $ = (s) => document.querySelector(s);
 
@@ -31,18 +29,6 @@ const timeFmt = new Intl.DateTimeFormat('it-IT', { hour: '2-digit', minute: '2-d
 const dayFmt = new Intl.DateTimeFormat('it-IT', { day: 'numeric', month: 'short' });
 const time = (t) => timeFmt.format(t);
 const when = (t) => (new Date(t).toDateString() === new Date().toDateString() ? 'oggi' : dayFmt.format(t)) + ' alle ' + timeFmt.format(t);
-const fold = (s) => s.normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase('it');
-const kind = (r) => (r.source === 'group' ? 'gruppo' : r.source === 'number' ? 'numero scritto a mano' : 'contatto');
-
-function normRecipient(r) {
-  if (!r || !r.jid) return null;
-  const jid = String(r.jid);
-  return {
-    jid,
-    label: String(r.label || jid),
-    source: SOURCES.includes(r.source) ? r.source : jid.endsWith('@g.us') ? 'group' : 'contact',
-  };
-}
 
 function normalizeDraft(x) {
   const options = (Array.isArray(x.options) ? x.options : []).map(String).slice(0, MAX_OPTIONS);
@@ -57,22 +43,15 @@ function normalizeDraft(x) {
     choices: Array.isArray(s.choices) ? s.choices.map(String) : null,
     multiple: typeof s.multiple === 'boolean' ? s.multiple : null,
   }));
-  let recipient = normRecipient(x.recipient);
-  if (!recipient && Array.isArray(x.recipients)) {
-    // Up to v2 a draft held a list of recipients, and before v2 the ones already served stayed in it.
-    const left = x.recipients.map(normRecipient).filter(Boolean)
-      .filter((r) => x.v === 2 || !sends.some((s) => s.ok && s.jid === r.jid));
-    recipient = left[0] || null;
-  }
   const origin = x.origin && typeof x.origin.chat === 'string'
     ? { chat: x.origin.chat, at: Number(x.origin.at) || 0 } : null;
+  // Versions up to 0.4 stored chosen recipients; the open chat is the recipient now.
   return {
     v: DRAFT_VERSION,
     id: String(x.id || uid()),
     question: String(x.question || ''),
     options,
     multiple: !!x.multiple,
-    recipient,
     sends,
     origin,
     createdAt: Number(x.createdAt) || Date.now(),
@@ -84,11 +63,10 @@ let drafts = [];
 let currentId = null;
 let view = 'list';
 let wa = { state: 'checking', me: '', loadingSince: 0 };
-const blankList = () => ({ items: null, loading: false, error: '', filter: '' });
-const lists = { groups: blankList(), contacts: blankList() };
-let pickTab = 'groups';
-let chatPolls = { loading: false, error: '', chat: '', polls: null };
-let confirming = false;
+// The chat open in WhatsApp Web: where the next poll goes.
+let active = { chat: null, error: '' };
+const blankChatPolls = () => ({ loading: false, error: '', chat: '', chatId: '', polls: null });
+let chatPolls = blankChatPolls();
 let sending = false;
 let deleteArmed = false;
 let noticeAck = false;
@@ -120,14 +98,6 @@ function problems(d) {
     p.push('Due opzioni sono uguali: WhatsApp le vuole tutte diverse.');
   }
   return p;
-}
-
-function normalizeNumber(s) {
-  s = s.trim();
-  if (s.includes('@')) return /^[\w.:-]+@(c\.us|g\.us|lid)$/.test(s) ? s : null;
-  let digits = s.replace(/\D/g, '');
-  if (digits.startsWith('00')) digits = digits.slice(2);
-  return digits.length >= 8 ? digits + '@c.us' : null;
 }
 
 let toastTimer = null;
@@ -189,6 +159,7 @@ async function refresh() {
   refreshing = true;
   clearTimeout(refreshTimer);
   const before = wa.state;
+  const chatBefore = active.chat?.id || '';
   try {
     const s = await call('state');
     wa.me = s.me || '';
@@ -199,17 +170,20 @@ async function refresh() {
   if (wa.state === 'loading') wa.loadingSince ||= Date.now();
   else wa.loadingSince = 0;
 
-  if (wa.state !== before) {
-    if (wa.state === 'online') {
-      if (lists.groups.items === null) loadList('groups');
-      if (pickTab === 'contacts' && lists.contacts.items === null) loadList('contacts');
-      if (view === 'import' && chatPolls.polls === null) loadChatPolls();
-    } else if (before === 'online') {
-      lists.groups = blankList();
-      lists.contacts = blankList();
+  if (wa.state === 'online') {
+    try { active = { chat: await call('activeChat'), error: '' }; } catch (e) { active = { chat: null, error: e.message }; }
+  } else {
+    active = { chat: null, error: '' };
+  }
+  const chatChanged = (active.chat?.id || '') !== chatBefore;
+
+  if (wa.state !== before || chatChanged) {
+    if (view === 'edit') renderSend();
+    if (view === 'import') {
+      const stale = (active.chat?.id || '') !== chatPolls.chatId || chatPolls.polls === null;
+      if (wa.state === 'online' && stale) loadChatPolls();
+      else renderImport();
     }
-    if (view === 'edit') { renderPicker(); renderSend(); }
-    if (view === 'import') renderImport();
   }
   renderStatus();
   refreshing = false;
@@ -252,25 +226,6 @@ function renderStatus() {
   $('#statusNote').textContent = note;
 }
 
-async function loadList(which) {
-  const l = lists[which];
-  if (l.loading) return;
-  l.loading = true;
-  l.error = '';
-  renderPickerList();
-  try {
-    const items = await call(which);
-    l.items = items.filter((i) => i && i.id)
-      .map((i) => ({ id: i.id, name: String(i.name || i.id), phone: i.phone || '' }))
-      .sort((a, b) => a.name.localeCompare(b.name, 'it'));
-  } catch (e) {
-    l.error = e.message;
-  } finally {
-    l.loading = false;
-  }
-  renderPickerList();
-}
-
 async function loadChatPolls() {
   if (chatPolls.loading) return;
   chatPolls.loading = true;
@@ -279,9 +234,11 @@ async function loadChatPolls() {
   try {
     const res = await call('chatPolls');
     chatPolls.chat = res.chat;
+    chatPolls.chatId = res.chatId || '';
     chatPolls.polls = res.polls;
   } catch (e) {
     chatPolls.error = e.message;
+    chatPolls.chatId = active.chat?.id || '';
     chatPolls.polls = null;
   } finally {
     chatPolls.loading = false;
@@ -290,9 +247,8 @@ async function loadChatPolls() {
 }
 
 async function send(d) {
-  const r = d.recipient;
-  if (!r) return;
-  confirming = false;
+  const target = active.chat;
+  if (!target || target.reason || sending) return;
   sending = true;
   closeEmoji();
   renderSend();
@@ -302,19 +258,28 @@ async function send(d) {
   let entry;
   try {
     // WhatsApp reads 0 as "any number of answers".
-    const out = await call('sendPoll', { chatId: r.jid, name: question, choices, selectableCount: multiple ? 0 : 1 });
+    const out = await call('sendPoll', { chatId: target.id, name: question, choices, selectableCount: multiple ? 0 : 1 });
+    if (out && out.sent === false) {
+      // The page found another chat open, or one that takes no messages: nothing went out.
+      sending = false;
+      active = { chat: out.active || null, error: '' };
+      renderSend();
+      toast(!out.active ? 'Nessuna chat aperta in WhatsApp Web: non ho mandato niente.'
+        : out.active.id !== target.id ? `La chat aperta è cambiata: ora è «${out.active.name}». Non ho mandato niente.`
+        : out.active.reason);
+      return;
+    }
     entry = { ok: true, info: out?.id || '' };
   } catch (e) {
     entry = { ok: false, info: e.message };
   }
-  d.sends.push({ jid: r.jid, label: r.label, at: Date.now(), question, choices, multiple, ...entry });
-  // Each send is a choice of its own: after it, the next recipient is picked again.
-  if (entry.ok && d.recipient?.jid === r.jid) d.recipient = null;
+  d.sends.push({ jid: target.id, label: target.name, at: Date.now(), question, choices, multiple, ...entry });
   sending = false;
   d.updatedAt = Date.now();
   save();
   if (view === 'edit' && currentId === d.id) renderView();
-  toast(entry.ok ? `Inviato a ${r.label}.` : `Non è partito: ${entry.info}`);
+  toast(entry.ok ? `Inviato a ${target.name}.` : `Non è partito: ${entry.info}`);
+  refresh();
 }
 
 // ---- drafts ----
@@ -332,7 +297,6 @@ function touch(d) {
 function go(next, id = currentId) {
   currentId = id;
   view = next;
-  confirming = false;
   save();
   renderView();
   window.scrollTo(0, 0);
@@ -342,13 +306,13 @@ const select = (id) => go(id ? 'edit' : 'list', id);
 const back = () => go('list');
 
 function openImport() {
-  chatPolls = { loading: false, error: '', chat: '', polls: null };
+  chatPolls = blankChatPolls();
   go('import');
   if (wa.state === 'online') loadChatPolls();
 }
 
 function newDraft(from) {
-  const d = normalizeDraft({ id: uid(), v: DRAFT_VERSION, ...from });
+  const d = normalizeDraft({ id: uid(), ...from });
   drafts.push(d);
   select(d.id);
   if (!from) document.getElementById('q')?.focus();
@@ -418,14 +382,6 @@ function moveOption(d, i, dir) {
   touch(d);
   rerenderKeepingScroll();
   focusOption(j);
-}
-
-function setRecipient(d, rcp) {
-  d.recipient = rcp ? normRecipient(rcp) : null;
-  confirming = false;
-  touch(d);
-  renderChips();
-  renderPickerList();
 }
 
 // ---- emoji ----
@@ -507,8 +463,8 @@ function noticeView() {
     h('h2', {}, 'Prima di cominciare'),
     h('ul', {},
       h('li', {}, 'Sondaggi in bozza è un progetto indipendente: non è di WhatsApp né di Meta e non è affiliato a loro.'),
-      h('li', {}, 'Serve a preparare e tenere in ordine i sondaggi. Lavora nella tua scheda di WhatsApp Web, e sondaggi, contatti e registro restano in questo browser: non vanno a nessun server.'),
-      h('li', {}, 'Ogni sondaggio parte verso una persona o un gruppo alla volta, solo dopo che hai confermato testo e destinatario.'),
+      h('li', {}, 'Serve a preparare e tenere in ordine i sondaggi. I sondaggi e il registro degli invii restano in questo browser: non vanno a nessun server.'),
+      h('li', {}, 'Un sondaggio parte solo verso la chat aperta in WhatsApp Web, quando premi il tasto che ne mostra il nome. Una chat alla volta.'),
       h('li', {}, 'Mandalo solo a chi ti conosce e se lo aspetta. WhatsApp può limitare o bloccare gli account che inviano messaggi non richiesti.')),
     h('div', { class: 'row' },
       h('button', {
@@ -538,8 +494,6 @@ function renderView() {
   const screens = { edit: () => editView(current()), import: importView, list: listView };
   $('#view').replaceChildren((screens[view] || listView)());
   if (view === 'edit') {
-    renderChips();
-    renderPicker();
     renderPreview();
     renderSend();
     renderLog();
@@ -561,9 +515,7 @@ function listView() {
           return h('li', {}, h('button', { class: 'draft', onclick: () => select(d.id) },
             h('span', { class: 'dq' }, d.question.trim() || 'Senza domanda'),
             h('span', { class: 'dm' },
-              [`${cleanOptions(d).length} opzioni`,
-                reached ? `inviato a ${reached}` : 'mai inviato',
-                d.recipient && `pronto per ${d.recipient.label}`].filter(Boolean).join(' · '))));
+              `${cleanOptions(d).length} opzioni · ` + (reached ? `inviato in ${reached} chat` : 'mai inviato'))));
         }))
       : h('div', { class: 'empty' },
           h('p', {}, 'Ancora nessun sondaggio.'),
@@ -640,11 +592,6 @@ function editView(d) {
     h('input', { type: 'radio', name: 'multi', checked: d.multiple === val, onchange: () => { d.multiple = val; touch(d); } }),
     text);
 
-  const tab = (which, label) => h('button', {
-    class: 'tab', role: 'tab', 'data-tab': which, 'aria-selected': String(pickTab === which),
-    onclick: () => selectTab(which),
-  }, label);
-
   return h('div', {},
     h('div', { class: 'ed-head' },
       h('button', { class: 'back', onclick: back }, '‹ Sondaggi'),
@@ -675,129 +622,16 @@ function editView(d) {
         h('div', { class: 'f' }, 'Risposte'),
         h('div', { class: 'radio' }, radio(false, 'Una sola'), radio(true, 'Più di una')))),
 
-    h('div', { class: 'card' },
-      h('div', { class: 'f' }, 'Destinatario'),
-      h('div', { class: 'chips', id: 'chips' }),
-      h('div', { class: 'tabs', role: 'tablist' }, tab('groups', 'Gruppi'), tab('contacts', 'Contatti')),
-      h('div', { id: 'picker' })),
-
+    // The preview and the button that names the open chat are the confirmation:
+    // what goes out and where, both on screen before the click.
     h('div', { class: 'card' },
       h('h2', {}, 'Anteprima'),
-      h('div', { id: 'preview', class: 'chatbg' })),
-
-    h('div', { class: 'card' },
-      h('h2', {}, 'Invio'),
-      h('div', { id: 'sendBox' })),
+      h('div', { id: 'preview', class: 'chatbg' }),
+      h('div', { id: 'sendBox', class: 'send-box' })),
 
     h('div', { class: 'card', id: 'logCard', hidden: true },
       h('div', { class: 'h2row' }, h('h2', {}, 'Invii'), h('span', { id: 'logCount' })),
       h('div', { id: 'log' })));
-}
-
-function renderChips() {
-  const box = document.getElementById('chips');
-  const d = current();
-  if (!box || !d) return;
-  const r = d.recipient;
-  box.replaceChildren(r
-    ? h('span', { class: 'chip', title: r.jid },
-        h('span', {}, r.label),
-        h('small', {}, [kind(r), sentTo(d).has(r.jid) && 'già inviato'].filter(Boolean).join(' · ')),
-        h('button', { 'aria-label': 'Togli ' + r.label, onclick: () => setRecipient(d, null) }, '×'))
-    : h('span', { class: 'note', style: 'margin:0' }, 'Scegli una persona o un gruppo: il sondaggio parte verso un destinatario alla volta.'));
-}
-
-function selectTab(which) {
-  pickTab = which;
-  for (const t of document.querySelectorAll('.tab')) t.setAttribute('aria-selected', String(t.dataset.tab === which));
-  renderPicker();
-  if (lists[which].items === null && wa.state === 'online') loadList(which);
-  document.querySelector('#picker input')?.focus();
-}
-
-// A search that is only a phone number can be picked as it is, in or out of the address book.
-function typedNumber(s) {
-  const t = s.trim();
-  return /^[+\d\s().-]+$/.test(t) ? normalizeNumber(t) : null;
-}
-
-function pickTypedNumber(d, jid) {
-  setRecipient(d, { jid, label: '+' + jid.split('@')[0], source: 'number' });
-  lists.contacts.filter = '';
-  const search = document.querySelector('#picker input[type=search]');
-  if (search) search.value = '';
-  renderPickerList();
-}
-
-function renderPicker() {
-  const box = document.getElementById('picker');
-  const d = current();
-  if (!box || !d) return;
-  const l = lists[pickTab];
-  const contacts = pickTab === 'contacts';
-  box.replaceChildren(h('div', { class: 'groups' },
-    h('input', {
-      type: 'search', value: l.filter,
-      placeholder: contacts ? 'Cerca un contatto o scrivi un numero' : 'Cerca un gruppo',
-      'aria-label': contacts ? 'Cerca un contatto o scrivi un numero' : 'Cerca un gruppo',
-      oninput: (e) => { l.filter = e.target.value; renderPickerList(); },
-      onkeydown: (e) => {
-        if (e.key !== 'Enter' || !contacts) return;
-        const jid = typedNumber(l.filter);
-        if (jid) { e.preventDefault(); pickTypedNumber(d, jid); }
-      },
-    }),
-    h('div', { class: 'glist', id: 'pickList' }),
-    h('div', { class: 'gfoot' },
-      h('span', { id: 'pickCount' }),
-      h('button', { class: 'btn ghost small', id: 'btnReload', onclick: () => loadList(pickTab) }, 'Aggiorna'))));
-  renderPickerList();
-}
-
-function renderPickerList() {
-  const box = document.getElementById('pickList');
-  const d = current();
-  if (!box || !d) return;
-  const l = lists[pickTab];
-  const contacts = pickTab === 'contacts';
-  const noun = contacts ? 'contatti' : 'gruppi';
-  document.getElementById('btnReload').disabled = l.loading || wa.state !== 'online';
-  document.getElementById('pickCount').textContent = l.items ? `${l.items.length} ${noun}` : '';
-  box.replaceChildren();
-  const say = (t) => box.append(h('p', { class: 'note pad' }, t));
-
-  const jid = contacts ? typedNumber(l.filter) : null;
-  if (jid && !(l.items || []).some((i) => i.id === jid)) {
-    const label = '+' + jid.split('@')[0];
-    const on = d.recipient?.jid === jid;
-    box.append(h('button', { class: 'addnum', disabled: on, onclick: () => pickTypedNumber(d, jid) },
-      on ? `${label} è già il destinatario` : `+ Usa il numero ${label}`));
-  }
-  const orType = contacts ? ' Puoi comunque scrivere un numero qui sopra.' : '';
-  if (l.loading) return say(`Carico i ${noun}…`);
-  if (l.error) return say(l.error.replace(/\s*$/, '').replace(/[^.!?]$/, '$&.') + orType);
-  if (l.items === null) {
-    return say((wa.state === 'online' ? `Premi Aggiorna per vedere i ${noun}.` : `Quando WhatsApp Web è collegato qui compaiono i tuoi ${noun}.`) + orType);
-  }
-  const q = fold(l.filter.trim());
-  const qd = l.filter.replace(/\D/g, '');
-  const matches = l.items.filter((i) => !q || fold(i.name).includes(q) || (qd.length >= 3 && i.phone.includes(qd)));
-  if (!matches.length) {
-    if (jid) return;
-    return say(l.items.length ? 'Nessun risultato.' + orType
-      : contacts ? 'WhatsApp Web non ha dato contatti. Scrivi un numero qui sopra.' : 'Non sei in nessun gruppo in cui puoi scrivere.');
-  }
-  const sent = sentTo(d);
-  for (const i of matches.slice(0, LIST_LIMIT)) {
-    box.append(h('label', { class: 'item' },
-      h('input', {
-        type: 'radio', name: 'recipient', checked: d.recipient?.jid === i.id,
-        onchange: () => setRecipient(d, { jid: i.id, label: i.name, source: contacts ? 'contact' : 'group' }),
-      }),
-      h('span', { class: 'iname' }, h('span', {}, i.name), i.phone && i.name !== '+' + i.phone && h('small', {}, '+' + i.phone)),
-      sent.has(i.id) && h('span', { class: 'tag soft' }, 'inviato')));
-  }
-  if (matches.length > LIST_LIMIT) say(`Altri ${matches.length - LIST_LIMIT}: scrivi per restringere la ricerca.`);
 }
 
 function renderPreview() {
@@ -818,29 +652,27 @@ function renderSend() {
   if (!box || !d) return;
   box.replaceChildren();
   const probs = problems(d);
-  const r = d.recipient;
+  const chat = active.chat;
+  const say = (t, cls = 'note') => box.append(h('p', { class: cls }, t));
   if (probs.length) box.append(h('ul', { class: 'probs' }, probs.map((p) => h('li', {}, p))));
-  const blocked = wa.state === 'online' ? '' : statusInfo()[1] + '.';
-  if (!r) box.append(h('p', { class: 'note', style: 'margin:0 0 10px' }, 'Nessun destinatario scelto.'));
-  else if (blocked) box.append(h('p', { class: 'note', style: 'margin:0 0 10px' }, blocked));
-  const can = !probs.length && !!r && !sending && !blocked;
 
-  if (confirming && can) {
-    // The store policy asks for the content and the recipient to be confirmed before sending.
-    box.append(h('div', { class: 'confirm-box' },
-      h('p', {}, 'Stai per mandare ', h('b', {}, '«' + d.question.trim() + '»'),
-        ` (${cleanOptions(d).length} opzioni, ${d.multiple ? 'più risposte' : 'una risposta'}) a `,
-        h('b', {}, r.label), ` (${kind(r)}).`),
-      sentTo(d).has(r.jid) && h('p', { class: 'note' }, "L'ha già ricevuto: gli arriverà di nuovo."),
-      r.source === 'number' && h('p', { class: 'note warn' },
-        'Un numero scritto a mano riceve il sondaggio anche se non ti conosce. Mandalo solo a chi se lo aspetta.'),
-      h('div', { class: 'confirm' },
-        h('button', { class: 'btn', onclick: () => send(d) }, 'Sì, invia'),
-        h('button', { class: 'btn ghost', onclick: () => { confirming = false; renderSend(); } }, 'Annulla'))));
-  } else {
-    box.append(h('button', { class: 'btn send', disabled: !can, onclick: () => { confirming = true; renderSend(); } },
-      sending ? 'Invio in corso…' : r ? `Invia a ${r.label}` : 'Invia'));
-  }
+  let reason = '';
+  if (wa.state !== 'online') reason = statusInfo()[1] + '.';
+  else if (active.error) reason = active.error;
+  else if (!chat) reason = 'Apri in WhatsApp Web la chat dove vuoi mandarlo: il tasto qui sotto prende il suo nome.';
+  else if (chat.reason) reason = chat.reason;
+  if (reason) say(reason);
+
+  const last = chat && [...d.sends].reverse().find((s) => s.ok && s.jid === chat.id);
+  if (chat && !chat.reason && last) say(`«${chat.name}» l'ha già ricevuto ${when(last.at)}: gli arriverà di nuovo.`);
+
+  const can = !probs.length && chat && !chat.reason && !reason && !sending;
+  box.append(h('button', {
+    class: 'btn send', id: 'btnSend', disabled: !can,
+    title: chat ? `Manda il sondaggio nella chat «${chat.name}» aperta in WhatsApp Web` : '',
+    onclick: () => send(d),
+  }, sending ? 'Invio in corso…' : chat ? `Invia a ${chat.name}` : 'Invia'));
+  if (chat && !chat.reason) say(chat.isGroup ? 'Gruppo aperto in WhatsApp Web.' : 'Chat aperta in WhatsApp Web.', 'note send-hint');
 }
 
 function renderLog() {

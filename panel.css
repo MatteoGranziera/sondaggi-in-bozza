@@ -67,30 +67,7 @@ input:disabled, textarea:disabled { opacity: .7; }
 .icon:disabled { opacity: .3; cursor: not-allowed; }
 .radio { display: flex; gap: 18px; flex-wrap: wrap; }
 .radio label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
-.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
-.chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px 4px 10px; border-radius: 999px; background: var(--accent-soft); font-size: 13px; max-width: 100%; }
-.chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chip button { all: unset; cursor: pointer; width: 20px; height: 20px; line-height: 20px; text-align: center; border-radius: 50%; flex: none; }
-.chip button:hover { background: var(--bg); }
-.groups { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-.groups input[type=search] { border: 0; border-bottom: 1px solid var(--line); border-radius: 0; }
-.glist { max-height: 240px; overflow: auto; padding: 4px; }
-.glist label { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 6px; cursor: pointer; }
-.glist label:hover { background: var(--bg); }
-.gfoot { border-top: 1px solid var(--line); padding: 6px 8px; display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
-.glist .item { justify-content: space-between; }
-.iname { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-.iname span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.iname small, .chip small { font-size: 11.5px; color: var(--muted); }
 .tag.soft { background: var(--accent-soft); color: var(--ink); flex: none; }
-.addnum { all: unset; box-sizing: border-box; display: block; width: 100%; padding: 8px; border-radius: 6px; color: var(--accent); font-weight: 550; cursor: pointer; }
-.addnum:hover:not(:disabled) { background: var(--accent-soft); }
-.addnum:disabled { color: var(--muted); cursor: default; }
-.addnum:focus-visible { outline: 2px solid var(--accent); }
-.tabs { display: flex; gap: 2px; padding: 3px; background: var(--bg); border-radius: 9px; margin-bottom: 10px; }
-.tab { all: unset; flex: 1; text-align: center; font-size: 13px; padding: 6px 4px; border-radius: 7px; cursor: pointer; color: var(--muted); }
-.tab[aria-selected=true] { background: var(--panel); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, .12); }
-.tab:focus-visible { outline: 2px solid var(--accent); }
 .infobar { padding: 10px 12px; border-radius: 8px; background: var(--accent-soft); font-size: 13.5px; margin-bottom: 12px; }
 
 .with-emoji { position: relative; flex: 1; min-width: 0; }
@@ -120,7 +97,10 @@ input:disabled, textarea:disabled { opacity: .7; }
 .pfoot { text-align: center; font-size: 13px; border-top: 1px solid var(--bubble-line); margin-top: 6px; padding-top: 8px; opacity: .8; }
 
 a.btn { display: inline-block; text-decoration: none; }
-.btn.send { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.send-box { margin-top: 14px; }
+.send-box .note { margin: 0 0 10px; }
+.btn.send { display: block; width: 100%; padding: 10px 14px; font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.send-box .send-hint { margin: 6px 0 0; text-align: center; }
 .list-head .row { gap: 6px; }
 .chat-polls { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .chat-polls li { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
@@ -132,16 +112,7 @@ a.btn { display: inline-block; text-decoration: none; }
 .notice li { margin-bottom: 8px; }
 .foot { font-size: 12px; color: var(--muted); margin: 18px 0 0; text-align: center; }
 .foot a { color: inherit; }
-.confirm-box p { margin: 0 0 8px; overflow-wrap: anywhere; }
-.confirm-list { list-style: none; margin: 0 0 10px; padding: 0; max-height: 220px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
-.confirm-list li { display: flex; justify-content: space-between; gap: 8px; padding: 6px 10px; border-top: 1px solid var(--line); font-size: 13.5px; }
-.confirm-list li:first-child { border-top: 0; }
-.confirm-list span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.confirm-list small { color: var(--muted); font-size: 12px; flex: none; }
-.note.warn { color: var(--danger); }
-.confirm-box .confirm { margin-top: 12px; }
 .probs { margin: 0 0 12px; padding-left: 18px; color: var(--danger); font-size: 13.5px; }
-.confirm { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .log { list-style: none; padding: 0; margin: 0; font-size: 13px; }
 .log li { padding: 8px 0; border-top: 1px solid var(--line); }
 .log li:first-child { border-top: 0; padding-top: 0; }
