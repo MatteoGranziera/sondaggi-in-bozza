@@ -7,13 +7,13 @@ correggi, poi apri il gruppo e lo mandi lì. Vive nel pannello laterale di Chrom
 Web, e usa la sessione già aperta nel browser: niente server, niente account in più.
 
 > Progetto indipendente e open source, **non affiliato a WhatsApp né a Meta**. WhatsApp è un marchio di
-> WhatsApp LLC. L'interfaccia è in italiano.
+> WhatsApp LLC. L'interfaccia segue la lingua di Chrome: italiano per i browser in italiano, inglese per tutte le altre lingue. Anche date, messaggi e ricerca emoji seguono questa scelta. Il testo dei sondaggi resta come lo scrivi.
 
 ![Il pannello con un sondaggio in bozza](store/screenshot-1-bozza.png)
 
 ## Installazione
 
-Dal Chrome Web Store, quando la revisione l'avrà approvata. Oppure dal codice:
+Dal [Chrome Web Store](https://chromewebstore.google.com/detail/nnlkplphcbnilfnpcjjfbnejkjmojeef). Oppure dal codice:
 
 1. Scarica lo zip dell'ultima [release](https://github.com/MatteoGranziera/sondaggi-in-bozza/releases)
    (o clona il repository) e scompattalo dove resterà.
@@ -38,7 +38,7 @@ da cartella e importali nella nuova. Due copie insieme caricherebbero WA-JS due 
 - **Da una chat** prende un sondaggio che c'è già: apri la chat in WhatsApp Web, premi Aggiorna se
   serve e scegli quale trasformare in bozza. Il sondaggio in chat resta com'è. Legge i messaggi che
   WhatsApp Web ha già caricato: se il sondaggio è molto indietro, scorri la chat fino a vederlo.
-- La faccina nella domanda e in ogni opzione apre le **emoji**, con la ricerca in italiano. L'emoji va
+- La faccina nella domanda e in ogni opzione apre le **emoji**, con la ricerca nella lingua dell’interfaccia. L'emoji va
   dove c'è il cursore; Esc o un clic fuori la chiude.
 - **Il destinatario è la chat aperta in WhatsApp Web.** Sotto l'anteprima c'è un solo tasto, "Invia a
   …", con il nome di quella chat: cambia da solo quando apri un'altra chat. Il clic manda il sondaggio
@@ -78,11 +78,13 @@ in [PRIVACY.md](PRIVACY.md).
 Non servono dipendenze: bastano Node 22 o più recente e Chrome.
 
 ```sh
+node tests/i18n.test.mjs         # lingua automatica, interfaccia inglese e bozze esistenti
 node tests/panel.test.mjs        # il pannello in Chrome headless, con un WhatsApp finto
 node tests/extension.test.mjs    # l'estensione vera su web.whatsapp.com, senza account collegato
 sh scripts/package.sh            # lo zip per il Chrome Web Store, in dist/
 sh scripts/update-wa-js.sh       # aggiorna WA-JS all'ultima versione (o: ... 4.7.2)
 node store/screenshots.mjs       # rigenera screenshot e tessera promozionale per lo Store
+node store/screenshots.mjs en    # gli screenshot in inglese, in store/en/
 python3 scripts/make-icons.py    # rigenera le icone, compresa quella per lo Store
 ```
 
@@ -98,15 +100,17 @@ dell'estensione vera.
 
 - `panel.html`, `panel.css`, `panel.js`: il pannello laterale, con sondaggi, editor, anteprima, invio e
   registro. Salva in `chrome.storage.local`.
-- `emoji.js`: prepara il selettore delle emoji in italiano.
+- `i18n.js`: i testi del pannello in inglese, scelti dalla lingua di Chrome; `_locales/` traduce la
+  descrizione del manifest.
+- `emoji.js`: prepara il selettore delle emoji nella lingua del pannello.
 - `content/config.js`: configura WA-JS prima che parta (statistiche spente).
 - `content/main.js`: gira dentro WhatsApp Web insieme a WA-JS e risponde a quattro comandi: stato,
   chat aperta, sondaggi della chat aperta, invio di un sondaggio nella chat aperta.
 - `content/bridge.js`: fa da ponte fra il pannello e `main.js`, che non possono parlarsi direttamente.
 - `vendor/wa-js/`: [WA-JS](https://github.com/wppconnect-team/wa-js) di WPPConnect (Apache-2.0),
-  versione in `VERSION`.
+  versione in `VERSION`, con le piccole modifiche di `scripts/patch-wa-js.mjs`.
 - `vendor/emoji-picker/`: [emoji-picker-element](https://github.com/nolanlawson/emoji-picker-element) e
-  i suoi dati in italiano (Apache-2.0), versione in `VERSION`.
+  i suoi dati in italiano e in inglese (Apache-2.0), versione in `VERSION`.
 - `icons/`: le icone dell'estensione; la sorgente è `icon.svg`, i PNG li disegna
   `scripts/make-icons.py`.
 - `store/`: testi, privacy e immagini per il Chrome Web Store.

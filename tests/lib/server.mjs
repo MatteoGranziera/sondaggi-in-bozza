@@ -14,8 +14,8 @@ export async function serve(root) {
     try {
       let body = await readFile(join(root, path === '/' ? 'panel.html' : path));
       if (path === '/panel.html') {
-        body = String(body).replace('<script src="panel.js"></script>',
-          '<script src="tests/fixtures/chrome-stub.js"></script><script src="panel.js"></script>');
+        body = String(body).replace('<script src="i18n.js"></script>',
+          '<script src="tests/fixtures/chrome-stub.js"></script><script src="i18n.js"></script>');
       }
       res.writeHead(200, { 'Content-Type': TYPES[extname(path)] || 'application/octet-stream' });
       res.end(body);

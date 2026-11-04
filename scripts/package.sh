@@ -7,6 +7,6 @@ out="$root/dist/sondaggi-in-bozza-$version.zip"
 mkdir -p "$root/dist"
 rm -f "$out"
 cd "$root"
-zip -qr -X "$out" manifest.json background.js panel.html panel.css panel.js emoji.js content icons vendor \
+zip -qr -X "$out" manifest.json background.js panel.html panel.css panel.js i18n.js _locales emoji.js content icons vendor \
   -x '*.DS_Store'
 echo "$out"

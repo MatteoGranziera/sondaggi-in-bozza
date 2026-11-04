@@ -28,6 +28,7 @@ window.chrome = (() => {
   window.__mock = mock;
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   return {
+    i18n: { getUILanguage: () => window.__testLanguage || 'it' },
     storage: { local: {
       get: async (keys) => { const o = {}; for (const k of keys) if (k in store) o[k] = structuredClone(store[k]); return o; },
       set: async (o) => { Object.assign(store, structuredClone(o)); },

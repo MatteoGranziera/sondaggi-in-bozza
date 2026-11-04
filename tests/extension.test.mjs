@@ -100,9 +100,13 @@ try {
   const panelTab = await newTab(port);
   const panel = await connect(panelTab.webSocketDebuggerUrl);
   await panel.goto(`chrome-extension://${extId}/panel.html`, 4000);
-  check('panel reaches WhatsApp Web through the bridge', (await panel.ev(`document.querySelector('#pill').textContent`)) === 'WhatsApp non è collegato');
-  await panel.ev(`[...document.querySelectorAll('button')].find((b) => b.textContent === 'Ho capito')?.click(); true`);
-  await panel.ev(`[...document.querySelectorAll('button')].find((b) => b.textContent === 'Nuovo').click(); true`);
+  // The panel follows Chrome's language, so the expected text goes through its own dictionary.
+  const tr = (s) => panel.ev(`PollI18n.t(${JSON.stringify(s)})`);
+  const locale = await panel.ev(`PollI18n.locale`);
+  check('panel reaches WhatsApp Web through the bridge', (await panel.ev(`document.querySelector('#pill').textContent`)) === await tr('WhatsApp non è collegato'));
+  await panel.ev(`[...document.querySelectorAll('button')].find((b) => b.textContent === ${JSON.stringify(await tr('Ho capito'))})?.click(); true`);
+  await panel.ev(`[...document.querySelectorAll('button')].find((b) => b.textContent === ${JSON.stringify(await tr('Nuovo'))}).click(); true`);
+  const search = locale === 'it' ? 'cuore' : 'heart';
   await sleep(300);
   await panel.ev(`document.querySelector('#q').parentElement.querySelector('.emoji-btn').click(); true`);
   let results = 0;
@@ -112,7 +116,7 @@ try {
       const r = document.querySelector('emoji-picker')?.shadowRoot;
       const s = r?.querySelector('#search');
       if (!s) return 0;
-      if (s.value !== 'cuore') { s.value = 'cuore'; s.dispatchEvent(new Event('input', { bubbles: true, composed: true })); return 0; }
+      if (s.value !== ${JSON.stringify(search)}) { s.value = ${JSON.stringify(search)}; s.dispatchEvent(new Event('input', { bubbles: true, composed: true })); return 0; }
       return r.querySelectorAll('.emoji-menu [role=option]').length;
     })()`);
   }

@@ -2,30 +2,59 @@
   "manifest_version": 3,
   "name": "Sondaggi in bozza",
   "short_name": "Sondaggi",
-  "version": "0.5.1",
-  "description": "Sondaggi in bozza da preparare, modificare e mandare nella chat aperta di WhatsApp Web. Non affiliata a WhatsApp né a Meta.",
+  "version": "0.6.1",
+  "description": "__MSG_extensionDescription__",
   "homepage_url": "https://github.com/MatteoGranziera/sondaggi-in-bozza",
   "minimum_chrome_version": "116",
-  "permissions": ["sidePanel", "storage"],
-  "host_permissions": ["https://web.whatsapp.com/*"],
-  "background": { "service_worker": "background.js" },
+  "permissions": [
+    "sidePanel",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://web.whatsapp.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "action": {
     "default_title": "Sondaggi in bozza",
-    "default_icon": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png" }
+    "default_icon": {
+      "16": "icons/16.png",
+      "32": "icons/32.png",
+      "48": "icons/48.png"
+    }
   },
-  "icons": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" },
-  "side_panel": { "default_path": "panel.html" },
+  "icons": {
+    "16": "icons/16.png",
+    "32": "icons/32.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  },
+  "side_panel": {
+    "default_path": "panel.html"
+  },
   "content_scripts": [
     {
-      "matches": ["https://web.whatsapp.com/*"],
-      "js": ["content/config.js", "vendor/wa-js/wppconnect-wa.js", "content/main.js"],
+      "matches": [
+        "https://web.whatsapp.com/*"
+      ],
+      "js": [
+        "content/config.js",
+        "vendor/wa-js/wppconnect-wa.js",
+        "content/main.js"
+      ],
       "world": "MAIN",
       "run_at": "document_start"
     },
     {
-      "matches": ["https://web.whatsapp.com/*"],
-      "js": ["content/bridge.js"],
+      "matches": [
+        "https://web.whatsapp.com/*"
+      ],
+      "js": [
+        "content/bridge.js"
+      ],
       "run_at": "document_start"
     }
-  ]
+  ],
+  "default_locale": "en"
 }

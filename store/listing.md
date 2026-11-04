@@ -27,12 +27,16 @@ Lo stesso zip è allegato a ogni release su GitHub.
 - **Riepilogo** (dal manifest): Sondaggi in bozza da preparare, modificare e mandare nella chat aperta
   di WhatsApp Web. Non affiliata a WhatsApp né a Meta.
 - **Categoria:** Produttività > Comunicazione
-- **Lingua:** Italiano
+- **Lingue dell’interfaccia:** Italiano e inglese, selezionate dalla lingua di Chrome (inglese per le altre lingue).
 - **Icona dello Store (128×128, disegno 96×96 con margine trasparente):** `store/icon-store-128.png`
 - **Tessera promozionale piccola (440×280, obbligatoria):** `store/promo-small-440x280.png`
 - **Screenshot (1280×800):** `store/screenshot-1-bozza.png`, `store/screenshot-2-conferma.png`,
   `store/screenshot-3-registro.png`, `store/screenshot-4-da-una-chat.png`. Screenshot e tessera si
   rigenerano con `node store/screenshots.mjs`.
+- **Screenshot in inglese (scheda English):** `store/en/screenshot-1-draft.png`,
+  `store/en/screenshot-2-send.png`, `store/en/screenshot-3-log.png`,
+  `store/en/screenshot-4-from-a-chat.png`, da `node store/screenshots.mjs en`. La tessera promozionale è
+  una sola per tutte le lingue.
 - **Video YouTube:** la guida della dashboard lo elenca fra i materiali promozionali. Se la dashboard
   non lascia proseguire senza, basta un video breve caricato come "non in elenco".
 - **Sito web:** https://github.com/MatteoGranziera/sondaggi-in-bozza
@@ -43,7 +47,7 @@ Lo stesso zip è allegato a ogni release su GitHub.
 > Sondaggi in bozza tiene in ordine i sondaggi che mandi con WhatsApp Web: li prepari con calma, li
 > correggi quando vuoi e li mandi quando sono pronti.
 >
-> • Scrivi domanda e opzioni, con le emoji e la ricerca in italiano, e guarda l'anteprima.
+> • Scrivi domanda e opzioni, con le emoji e la ricerca in italiano o inglese, e guarda l'anteprima.
 > • Oppure parti da un sondaggio che c'è già: apri la chat e trasformalo in una bozza.
 > • Il sondaggio resta in bozza finché non decidi di mandarlo, e resta modificabile anche dopo.
 > • Lo mandi nella chat aperta in WhatsApp Web: sotto l'anteprima c'è un solo tasto con il nome di
@@ -62,15 +66,27 @@ Lo stesso zip è allegato a ogni release su GitHub.
 
 ### Description (English)
 
-> Sondaggi in bozza ("poll drafts") keeps your WhatsApp polls as drafts: write the question and options
-> (with an emoji picker) or start from a poll already in an open chat, check the preview and edit it any
-> time. To send, open a chat in WhatsApp Web: the single button under the preview shows that chat's name
-> and sends the poll there, for example to a friend for feedback, then to the group. A log shows which
-> chats got which version and when.
+> Sondaggi in bozza ("poll drafts") keeps the polls you send with WhatsApp Web in order: write them at
+> your own pace, fix them whenever you like and send them when they are ready.
 >
-> Not a bulk messaging tool: no recipient lists, one chat at a time, the one you have open. No server, no
-> analytics, no access to your address book: polls and the log stay in your browser. Independent
-> open-source project, not affiliated with WhatsApp or Meta. The interface is in Italian.
+> • Write the question and options, with an emoji picker searchable in English or Italian, and check the
+>   preview.
+> • Or start from a poll that is already in a chat: open the chat and turn it into a draft.
+> • The poll stays a draft until you decide to send it, and you can still edit it afterwards.
+> • Send it to the chat open in WhatsApp Web: under the preview there is a single button with that chat's
+>   name. For example: open the chat with a friend to get their opinion, then open the group and send it
+>   there.
+> • The log shows which chats received it, when, and with which version of the text.
+>
+> Not a bulk messaging tool: no recipient lists, one chat at a time, the one you have open.
+>
+> Privacy: no server, no analytics, no access to your address book. Polls and the log stay in your
+> browser; polls leave only through WhatsApp Web, in the chat you have open.
+>
+> Works in Chrome's side panel, next to a WhatsApp Web tab linked to your phone. The interface follows
+> your Chrome language: Italian for Italian browsers, English otherwise. Sondaggi in bozza is an
+> independent, open-source project: it is not made by WhatsApp or Meta and is not affiliated with them.
+> WhatsApp is a trademark of WhatsApp LLC.
 
 ## Privacy (scheda "Privacy" della dashboard)
 
