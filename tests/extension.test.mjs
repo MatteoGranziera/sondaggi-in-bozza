@@ -29,6 +29,16 @@ try {
 
   const waTab = await newTab(port);
   const wa = await connect(waTab.webSocketDebuggerUrl);
+  // What chrome://extensions lists as the extension's errors: those raised from its own scripts.
+  const extErrors = [];
+  wa.ws.addEventListener('message', (e) => {
+    const m = JSON.parse(e.data);
+    const p = m.params;
+    const top = (p?.stackTrace ?? p?.exceptionDetails?.stackTrace)?.callFrames?.[0]?.url ?? '';
+    if (!top.startsWith('chrome-extension://')) return;
+    if (m.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(p.type)) extErrors.push(p.args.map((a) => a.value ?? a.description).join(' '));
+    if (m.method === 'Runtime.exceptionThrown') extErrors.push(p.exceptionDetails.exception?.description || p.exceptionDetails.text);
+  });
   await wa.send('Network.enable');
   await wa.goto('https://web.whatsapp.com/', 0);
   let ready = false;
@@ -85,6 +95,7 @@ try {
   await sleep(5000);
   const tracked = wa.requests.filter((u) => TRACKERS.test(u));
   check('no requests to analytics or link-preview servers', tracked.length === 0, tracked.join(' '));
+  check('no extension errors on WhatsApp Web', extErrors.length === 0, extErrors.join(' ; '));
 
   const panelTab = await newTab(port);
   const panel = await connect(panelTab.webSocketDebuggerUrl);

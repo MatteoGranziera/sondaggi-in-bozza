@@ -12,4 +12,5 @@ cp package/dist/wppconnect-wa.js package/dist/wppconnect-wa.js.LICENSE.txt "$roo
 cp package/LICENSE "$root/vendor/wa-js/LICENSE"
 node -p "require('./package/package.json').version" > "$root/vendor/wa-js/VERSION"
 echo "WA-JS $(cat "$root/vendor/wa-js/VERSION") copiato."
+node "$root/scripts/patch-wa-js.mjs"
 echo "Ora ricarica l'estensione da chrome://extensions e poi la scheda di WhatsApp Web."
