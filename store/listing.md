@@ -61,7 +61,8 @@ Lo stesso zip è allegato a ogni release su GitHub.
 > nel tuo browser; i sondaggi escono solo attraverso WhatsApp Web, nella chat che hai aperto.
 >
 > Funziona nel pannello laterale di Chrome, accanto a una scheda di WhatsApp Web collegata al tuo
-> telefono. Sondaggi in bozza è un progetto indipendente e open source: non è di WhatsApp né di Meta e
+> telefono. L'interfaccia segue la lingua di Chrome: italiano per i browser in italiano, inglese per le
+> altre lingue. Sondaggi in bozza è un progetto indipendente e open source: non è di WhatsApp né di Meta e
 > non è affiliato a loro. WhatsApp è un marchio di WhatsApp LLC.
 
 ### Description (English)
